@@ -16,7 +16,7 @@ function lineseg(preset) {
   return `<hp:linesegarray><hp:lineseg textpos="0" vertpos="0" vertsize="${p.vertsize}" textheight="${p.textheight}" baseline="${p.baseline}" spacing="${p.spacing}" horzpos="${p.horzpos}" horzsize="${p.horzsize}" flags="${p.flags}"/></hp:linesegarray>`;
 }
 
-// 단일 run 문단
+// 단일 run 문단. (짧은 텍스트용 — 캐시된 lineseg 사용 OK)
 function P(paraId, charId, text, { preset = 'orgKindProject' } = {}) {
   const t = text === '' || text == null
     ? '<hp:t/>'
@@ -27,17 +27,20 @@ function P(paraId, charId, text, { preset = 'orgKindProject' } = {}) {
     + `</hp:p>`;
 }
 
-// 다중 run 문단
-function Pmulti(paraId, runs, { preset = 'orgKindProject' } = {}) {
+// 다중 run 문단. (긴 프로젝트 제목 라인 전용)
+// preset:'auto' (기본) → linesegarray 생략하여 한글이 직접 줄바꿈 계산.
+//   긴 제목이 셀 너비를 넘을 때 다음 줄과 텍스트가 겹치는 버그 방지.
+function Pmulti(paraId, runs, { preset = 'auto' } = {}) {
   const runsXml = runs.map(([cid, text]) => {
     const t = text === '' || text == null
       ? '<hp:t/>'
       : `<hp:t>${xmlEscape(text)}</hp:t>`;
     return `<hp:run charPrIDRef="${cid}">${t}</hp:run>`;
   }).join('');
+  const seg = preset === 'auto' ? '' : lineseg(preset);
   return `<hp:p id="2147483648" paraPrIDRef="${paraId}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">`
     + runsXml
-    + lineseg(preset)
+    + seg
     + `</hp:p>`;
 }
 
