@@ -12,5 +12,6 @@ Thumbs.db
 
 # 임시
 *.tmp
+*.tmp.*
 *.bak
 node_modules/
