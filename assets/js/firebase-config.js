@@ -5,12 +5,12 @@
 // 자세한 절차는 SETUP.md 참고.
 
 export const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT",
-  storageBucket: "YOUR_PROJECT.firebasestorage.app",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyCTmF4N6gSc7yEncIirF1jGtnPC0TGWpBI",
+  authDomain: "krri-track-roadbed.firebaseapp.com",
+  projectId: "krri-track-roadbed",
+  storageBucket: "krri-track-roadbed.firebasestorage.app",
+  messagingSenderId: "512158435622",
+  appId: "1:512158435622:web:40f585999c4317665899e7"
 };
 
 export const DEFAULT_ORG_NAME = "[궤도노반연구실]";
