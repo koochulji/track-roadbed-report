@@ -308,6 +308,38 @@ function render() {
       lastKnownRemoteSavedMs = 0;
     }
     warnedRemoteChange = false;
+
+    // 본인 선택 직후 entries 가 비어있으면, 본인이 담당자/공동책임자로 등록된
+    // 카테고리들을 자동 prefill. 입력 부담 줄이기 위함.
+    // 단, 사용자가 손대기 전이라 자동 저장하지 않음 (입력하면 그때 저장됨).
+    if (Array.isArray(mySubmission.entries) && mySubmission.entries.length === 0) {
+      const myName = (s.round.authorsSnapshot?.find(a => a.id === s.activeAuthorId)?.name
+                      || mySubmission.authorName || '').trim();
+      if (myName) {
+        // 직급 접미사 제거한 핵심 이름 추출 (예: "지구철 선임" → "지구철")
+        const coreName = myName.replace(/\s*(선임|책임|수석|연구원|박사|책임자|책임연구원)\s*$/, '').trim();
+        // 합본 카테고리 목록 (snapshot + master)
+        const snap = Array.isArray(s.round.categoriesSnapshot) ? s.round.categoriesSnapshot : [];
+        const master = Array.isArray(s.categories) ? s.categories : [];
+        const catMap = new Map();
+        for (const c of snap) catMap.set(c.id, c);
+        for (const c of master) if (!catMap.has(c.id)) catMap.set(c.id, c);
+        const allCats = [...catMap.values()];
+        // 본인 이름이 owner 에 포함된 카테고리 추출
+        const myCats = allCats.filter(c => {
+          const owner = (c.owner || '').trim();
+          if (!owner) return false;
+          return owner.includes(myName) || (coreName && owner.includes(coreName));
+        });
+        if (myCats.length > 0) {
+          mySubmission.entries = myCats.map(cat => ({
+            categoryId: cat.id,
+            past: [emptyItem(myName)],
+            next: [],
+          }));
+        }
+      }
+    }
   } else if (mine && mine.status !== mySubmission.status) {
     // 원격에서 잠금 해제 반영 등 상태만 동기화
     mySubmission.status = mine.status;
