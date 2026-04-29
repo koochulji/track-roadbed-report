@@ -64,9 +64,14 @@ function labelRange(text) {
     + `</hp:p>`;
 }
 
-// 라벨 셀 subList 내용 생성
+// 라벨 셀 subList 내용 생성 (2줄: 제목 + 부제목)
 export function buildLabelSubList(title, range) {
   return labelHead(title) + labelRange(range);
+}
+
+// 라벨 셀 subList 내용 생성 — 3줄 버전 (제목 + 부제목 + 날짜 범위)
+export function buildLabelSubListThree(title, subtitle, range) {
+  return labelHead(title) + labelRange(subtitle) + labelRange(range);
 }
 
 // 포맷: "오송시험선로 디지털화를 위한 시험선 답사(4/13, ESNT, 박정준)"
@@ -80,7 +85,7 @@ export function formatItem(item) {
 // 본문 셀 — kind별 헤더 구성 헬퍼
 // 대분류 그룹의 순서 (샘플 양식 기준). 존재하는 kind만 필터하여 연속 번호 매김.
 const KIND_ORDER = ['basic', 'natl_rnd', 'consign', 'etc'];
-const KIND_NAMES = {
+export const KIND_NAMES = {
   basic: '기본사업',
   natl_rnd: '국가R&D',
   consign: '수탁사업',
@@ -90,20 +95,40 @@ function kindLabel(kind, idx) {
   return `(${idx}) ${KIND_NAMES[kind] ?? kind}`;
 }
 
-// 집계: submissions에서 side("past"|"next") 한 쪽의 모든 카테고리별 항목을 모은다.
-// 입력 entry 구조 유효성은 store 측에서 보장한다고 가정.
-export function aggregateItems(submissions, side) {
+// Compat: 기존 past/next 또는 새 단일 배열 모두 처리
+function flattenSubmissionEntries(sub) {
+  const e = sub?.entries;
+  if (Array.isArray(e)) return e;
+  if (e && (Array.isArray(e.past) || Array.isArray(e.next))) {
+    const map = new Map();
+    for (const arr of [e.past ?? [], e.next ?? []]) {
+      for (const ent of arr) {
+        const key = ent?.categoryId;
+        if (!key) continue;
+        if (!map.has(key)) map.set(key, { categoryId: key, items: [] });
+        map.get(key).items.push(...(ent.items ?? []));
+      }
+    }
+    return [...map.values()];
+  }
+  return [];
+}
+
+// 집계: submissions에서 모든 카테고리별 항목을 모은다.
+// 옵션: { onlyImportant: true } → important=true 항목만
+export function aggregateItems(submissions, { onlyImportant = false } = {}) {
   /** @returns {Object<string, Array>}  categoryId → items[] */
   const out = {};
   for (const sub of submissions) {
-    const entries = sub?.entries?.[side] ?? [];
+    const entries = flattenSubmissionEntries(sub);
     for (const ce of entries) {
       if (!ce?.categoryId) continue;
-      if (!out[ce.categoryId]) out[ce.categoryId] = [];
       for (const it of (ce.items ?? [])) {
         if (!it) continue;
         const text = (it.text ?? '').trim();
         if (!text) continue;
+        if (onlyImportant && !it.important) continue;
+        if (!out[ce.categoryId]) out[ce.categoryId] = [];
         out[ce.categoryId].push({
           text,
           date: (it.date ?? '').trim(),
@@ -117,10 +142,10 @@ export function aggregateItems(submissions, side) {
   return out;
 }
 
-// 본문 셀 subList 내용 생성
-export function buildBodySubList(round, submissions, side, { orgName = '[철도AI융합연구실]' } = {}) {
+// 일반 보고 본문 셀: 모든 항목을 kind별 그룹핑 (기본→국가R&D→수탁→기타)
+export function buildGeneralReportBody(round, submissions, { orgName = '[궤도노반연구실]' } = {}) {
   const categories = round.categoriesSnapshot ?? [];
-  const itemsByCat = aggregateItems(submissions, side);
+  const itemsByCat = aggregateItems(submissions);
 
   // 존재하는 kind 만 필터하여 연속 번호 매김 ((1), (2), ...)
   const existingKinds = KIND_ORDER.filter(k => categories.some(c => c.kind === k));
@@ -165,22 +190,60 @@ export function buildBodySubList(round, submissions, side, { orgName = '[철도A
   return parts.join('');
 }
 
+// 주요 보고 본문 셀: important=true 항목만, kind별 그룹 없이 카테고리 순서대로 출력
+export function buildMainReportBody(round, submissions, { orgName = '[궤도노반연구실]' } = {}) {
+  const categories = round.categoriesSnapshot ?? [];
+  const itemsByCat = aggregateItems(submissions, { onlyImportant: true });
+
+  // 카테고리는 store의 order 순서대로, 항목 있는 것만
+  const cats = [...categories].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  const parts = [];
+  parts.push(P(PARA.ORG_LINE, CHAR.ORG_AND_KIND, orgName));
+
+  let projectCounter = 0;
+  for (const cat of cats) {
+    const items = itemsByCat[cat.id] ?? [];
+    if (items.length === 0) continue;  // 주요 항목 없는 과제는 출력 생략
+    projectCounter += 1;
+    const ownerSuffix = cat.owner ? `(${cat.owner})` : '';
+    const kindPrefix = `[${KIND_NAMES[cat.kind] ?? cat.kind}]`;
+    parts.push(Pmulti(PARA.PROJECT_LINE, [
+      [CHAR.ORG_AND_KIND, `(${projectCounter}) ${kindPrefix} `],
+      [CHAR.PROJECT_TITLE, `${cat.title}${ownerSuffix}`],
+    ]));
+    for (const it of items) {
+      const charId = CHAR.BULLET_BOLD;  // 주요보고는 모든 항목 굵게
+      parts.push(P(PARA.BULLET, charId, formatItem(it), { preset: 'bullet' }));
+    }
+  }
+
+  // 비어있어도 최소 한 줄은 둠
+  if (projectCounter === 0) {
+    parts.push(P(PARA.BLANK, CHAR.BULLET_TEXT, '(주요 보고 항목 없음)', { preset: 'bullet' }));
+  } else {
+    parts.push(P(PARA.BLANK, CHAR.BULLET_TEXT, '', { preset: 'blank' }));
+  }
+  return parts.join('');
+}
+
 // 메인: section0.xml 전체 문자열 생성
 export function buildSection0Xml(round, submissions) {
-  const orgName = round.orgName || '[철도AI융합연구실]';
-  const pastLabelTitle = round.form === 'monthly' ? '지난 달 실적' : '지난 주 실적';
-  const nextLabelTitle = round.form === 'monthly' ? '이번 달 계획' : '이번 주 계획';
-  const pastRange = `(${round.rangeStart} ~ ${round.rangeEnd})`;
-  const nextRange = `(${round.nextRangeStart} ~ ${round.nextRangeEnd})`;
+  const orgName = round.orgName || '[궤도노반연구실]';
 
-  const pastLabel = buildLabelSubList(pastLabelTitle, pastRange);
-  const nextLabel = buildLabelSubList(nextLabelTitle, nextRange);
-  const pastBody = buildBodySubList(round, submissions, 'past', { orgName });
-  const nextBody = buildBodySubList(round, submissions, 'next', { orgName });
+  // Row 0 (PAST slot, repurposed): "주 요 / 보고사항"
+  const mainLabel = buildLabelSubList('주 요', '보고사항');
+  const mainBody = buildMainReportBody(round, submissions, { orgName });
+
+  // Row 1 (NEXT slot, repurposed): "일반 보고사항 / 지난 주(달) 실적 / (range)"
+  const periodLabel = round.form === 'monthly' ? '지난 달 실적' : '지난 주 실적';
+  const periodRange = `(${round.rangeStart} ~ ${round.rangeEnd})`;
+  const generalLabelFull = buildLabelSubListThree('일반 보고사항', periodLabel, periodRange);
+  const generalBody = buildGeneralReportBody(round, submissions, { orgName });
 
   return SECTION_TEMPLATE_XML
-    .replace('{{PAST_LABEL_SUBLIST}}', pastLabel)
-    .replace('{{PAST_BODY_SUBLIST}}', pastBody)
-    .replace('{{NEXT_LABEL_SUBLIST}}', nextLabel)
-    .replace('{{NEXT_BODY_SUBLIST}}', nextBody);
+    .replace('{{PAST_LABEL_SUBLIST}}', mainLabel)
+    .replace('{{PAST_BODY_SUBLIST}}', mainBody)
+    .replace('{{NEXT_LABEL_SUBLIST}}', generalLabelFull)
+    .replace('{{NEXT_BODY_SUBLIST}}', generalBody);
 }
