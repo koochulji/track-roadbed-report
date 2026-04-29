@@ -462,7 +462,14 @@ function renderEntriesSection(s, sub, locked) {
   box.className = 'author-block';
   box.innerHTML = `<h3>활동 항목 (과제별) <span class="muted tight">(${s.round.rangeStart} ~ ${s.round.rangeEnd})</span></h3>`;
   const entries = sub.entries ?? [];
-  const catList = s.round.categoriesSnapshot ?? [];
+  // 회차의 categoriesSnapshot 과 마스터 카테고리(s.categories) 합본 — id로 dedupe.
+  // 회차 생성 시점 이후 추가/편집된 마스터 카테고리도 작성자에게 보이도록.
+  const snap = Array.isArray(s.round.categoriesSnapshot) ? s.round.categoriesSnapshot : [];
+  const master = Array.isArray(s.categories) ? s.categories : [];
+  const merged = new Map();
+  for (const c of snap) merged.set(c.id, c);
+  for (const c of master) if (!merged.has(c.id)) merged.set(c.id, c);
+  const catList = [...merged.values()];
   const usedCatIds = new Set(entries.map(e => e.categoryId));
 
   for (let eIdx = 0; eIdx < entries.length; eIdx++) {
@@ -516,7 +523,11 @@ function renderEntriesSection(s, sub, locked) {
 
 function renderCategoryBlock(s, sub, eIdx, locked) {
   const entry = sub.entries[eIdx];
-  const cat = s.round.categoriesSnapshot.find(c => c.id === entry.categoryId);
+  // categoriesSnapshot 우선, 없으면 마스터(s.categories)에서 fallback
+  const snapCats = Array.isArray(s.round.categoriesSnapshot) ? s.round.categoriesSnapshot : [];
+  const masterCats = Array.isArray(s.categories) ? s.categories : [];
+  const cat = snapCats.find(c => c.id === entry.categoryId)
+    || masterCats.find(c => c.id === entry.categoryId);
   const box = document.createElement('div');
   box.className = 'cat-block';
   const title = cat

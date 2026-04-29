@@ -367,7 +367,7 @@ function renderRoundTab(s) {
   $('#btn-hwpx', info).addEventListener('click', async () => {
     try {
       const submissions = s.submissions.length ? s.submissions : await getAllSubmissions(s.current.roundId);
-      const blob = await buildHwpxBlob(s.round, submissions);
+      const blob = await buildHwpxBlob(s.round, submissions, { masterCategories: s.categories });
       downloadBlob(blob, suggestFileName(s.round));
     } catch (e) {
       console.error(e);

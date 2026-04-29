@@ -17,7 +17,8 @@ async function loadPrvImage() {
   return _prvImageCache;
 }
 
-export async function buildHwpxBlob(round, submissions) {
+// masterCategories: 회차 snapshot 외에 합본할 마스터 카테고리 (선택)
+export async function buildHwpxBlob(round, submissions, { masterCategories = [] } = {}) {
   const JSZip = getJSZip();
   const zip = new JSZip();
 
@@ -36,7 +37,7 @@ export async function buildHwpxBlob(round, submissions) {
   zip.file('Preview/PrvImage.png', prvImage, { compression: 'STORE' });
 
   // 4) 동적 section0.xml
-  const sectionXml = buildSection0Xml(round, submissions);
+  const sectionXml = buildSection0Xml(round, submissions, { masterCategories });
   zip.file('Contents/section0.xml', sectionXml, { compression: 'DEFLATE' });
 
   const blob = await zip.generateAsync({
