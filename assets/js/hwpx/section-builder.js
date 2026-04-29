@@ -106,70 +106,94 @@ function kindHeaderLabel(kind) {
   return `<${KIND_NAMES[kind] ?? kind}>`;
 }
 
-// Compat: 기존 past/next 또는 새 단일 배열 모두 처리
+// Compat: 다양한 entries 형식을 새 [{categoryId, past, next}] 형식으로 정규화.
 function flattenSubmissionEntries(sub) {
   const e = sub?.entries;
-  if (Array.isArray(e)) return e;
+  // 새 형식: [{categoryId, past, next}]
+  if (Array.isArray(e) && e.every(x => 'past' in x || 'next' in x)) {
+    return e.map(x => ({
+      categoryId: x.categoryId,
+      past: Array.isArray(x.past) ? x.past : [],
+      next: Array.isArray(x.next) ? x.next : [],
+    }));
+  }
+  // 통합 형식: [{categoryId, items}] → 모두 past 로
+  if (Array.isArray(e)) {
+    return e.map(x => ({
+      categoryId: x.categoryId,
+      past: Array.isArray(x.items) ? x.items : [],
+      next: [],
+    }));
+  }
+  // 매우 옛날: {past: [{categoryId, items}], next: [{categoryId, items}]}
   if (e && (Array.isArray(e.past) || Array.isArray(e.next))) {
     const map = new Map();
-    for (const arr of [e.past ?? [], e.next ?? []]) {
-      for (const ent of arr) {
-        const key = ent?.categoryId;
-        if (!key) continue;
-        if (!map.has(key)) map.set(key, { categoryId: key, items: [] });
-        map.get(key).items.push(...(ent.items ?? []));
-      }
+    for (const ent of (e.past ?? [])) {
+      const key = ent?.categoryId;
+      if (!key) continue;
+      if (!map.has(key)) map.set(key, { categoryId: key, past: [], next: [] });
+      map.get(key).past.push(...(ent.items ?? []));
+    }
+    for (const ent of (e.next ?? [])) {
+      const key = ent?.categoryId;
+      if (!key) continue;
+      if (!map.has(key)) map.set(key, { categoryId: key, past: [], next: [] });
+      map.get(key).next.push(...(ent.items ?? []));
     }
     return [...map.values()];
   }
   return [];
 }
 
-// 집계: submissions에서 모든 카테고리별 항목을 모은다.
-// 옵션: { onlyImportant: true } → important=true 항목만
-export function aggregateItems(submissions, { onlyImportant = false } = {}) {
+// 집계: submissions에서 카테고리별 항목을 모은다.
+// 옵션:
+//   side: 'past' | 'next' | 'all'   (기본 'all') — 가져올 시점
+//   onlyImportant: boolean         (기본 false)
+export function aggregateItems(submissions, { side = 'all', onlyImportant = false } = {}) {
   /** @returns {Object<string, Array>}  categoryId → items[] */
   const out = {};
+  const collect = (sub, ce, items) => {
+    for (const it of (items ?? [])) {
+      if (!it) continue;
+      const text = (it.text ?? '').trim();
+      if (!text) continue;
+      if (onlyImportant && !it.important) continue;
+      if (!out[ce.categoryId]) out[ce.categoryId] = [];
+      out[ce.categoryId].push({
+        text,
+        date: (it.date ?? '').trim(),
+        org: (it.org ?? '').trim(),
+        person: (it.person ?? sub.authorName ?? '').trim(),
+        important: !!it.important,
+      });
+    }
+  };
   for (const sub of submissions) {
     const entries = flattenSubmissionEntries(sub);
     for (const ce of entries) {
       if (!ce?.categoryId) continue;
-      for (const it of (ce.items ?? [])) {
-        if (!it) continue;
-        const text = (it.text ?? '').trim();
-        if (!text) continue;
-        if (onlyImportant && !it.important) continue;
-        if (!out[ce.categoryId]) out[ce.categoryId] = [];
-        out[ce.categoryId].push({
-          text,
-          date: (it.date ?? '').trim(),
-          org: (it.org ?? '').trim(),
-          person: (it.person ?? sub.authorName ?? '').trim(),
-          important: !!it.important,
-        });
-      }
+      if (side === 'past' || side === 'all') collect(sub, ce, ce.past);
+      if (side === 'next' || side === 'all') collect(sub, ce, ce.next);
     }
   }
   return out;
 }
 
-// 일반 보고 본문 셀: 궤도노반연구실 양식
+// 일반 보고 본문 (side별): 궤도노반연구실 양식
 //   [궤도노반연구실]
 //   <기본사업>
 //   (1) 과제명 (책임자)
 //    - 항목 1
-//    - 항목 2
-//   (2) 과제명 (책임자)
+//   (2) ...
 //   <국가R&D>
-//   (9) 과제명 ...
-export function buildGeneralReportBody(round, submissions, { orgName = '[궤도노반연구실]' } = {}) {
+//   ...
+function buildKindGroupedBody(round, submissions, side, { orgName = '[궤도노반연구실]', includeOrgLine = true } = {}) {
   const categories = round.categoriesSnapshot ?? [];
-  const itemsByCat = aggregateItems(submissions);
-
+  const itemsByCat = aggregateItems(submissions, { side });
   const existingKinds = KIND_ORDER.filter(k => categories.some(c => c.kind === k));
 
   const parts = [];
-  parts.push(P(PARA.ORG_LINE, CHAR.ORG_AND_KIND, orgName));
+  if (includeOrgLine) parts.push(P(PARA.ORG_LINE, CHAR.ORG_AND_KIND, orgName));
 
   let projectCounter = 0;
   for (const kind of existingKinds) {
@@ -177,19 +201,21 @@ export function buildGeneralReportBody(round, submissions, { orgName = '[궤도�
       .filter(c => c.kind === kind)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
-    // 대분류 헤더: "<기본사업>"
+    // 항목이 하나라도 있는 kind만 헤더 출력
+    const kindHasAny = kindsCats.some(c => (itemsByCat[c.id] ?? []).length > 0);
+    if (!kindHasAny) continue;
+
     parts.push(P(PARA.ORG_LINE, CHAR.ORG_AND_KIND, kindHeaderLabel(kind)));
 
     for (const cat of kindsCats) {
       const items = itemsByCat[cat.id] ?? [];
+      if (items.length === 0) continue;  // 빈 과제는 건너뛰기
       projectCounter += 1;
       const ownerSuffix = cat.owner ? ` (${cat.owner})` : '';
-      // 과제 라인: "(N) 과제명 (책임자)"
       parts.push(Pmulti(PARA.PROJECT_LINE, [
         [CHAR.ORG_AND_KIND, `(${projectCounter}) `],
         [CHAR.PROJECT_TITLE, `${cat.title}${ownerSuffix}`],
       ]));
-      // 항목 bullet
       for (const it of items) {
         const charId = it.important ? CHAR.BULLET_BOLD : CHAR.BULLET_TEXT;
         parts.push(P(PARA.BULLET, charId, formatItem(it), { preset: 'bullet' }));
@@ -197,6 +223,47 @@ export function buildGeneralReportBody(round, submissions, { orgName = '[궤도�
     }
   }
   return parts.join('');
+}
+
+// 일반 보고 본문 셀: 지난 X 실적 + 이번 X 계획 (한 셀에 두 시점 함께)
+export function buildGeneralReportBody(round, submissions, { orgName = '[궤도노반연구실]' } = {}) {
+  const periodWord = round.form === 'monthly' ? '달' : '주';
+  const pastRange = formatRangeMD(round.rangeStart, round.rangeEnd);
+  const nextRange = formatRangeMD(round.nextRangeStart, round.nextRangeEnd);
+
+  const parts = [];
+  parts.push(P(PARA.ORG_LINE, CHAR.ORG_AND_KIND, orgName));
+
+  // ▣ 지난 X 실적 ...
+  parts.push(P(
+    PARA.ORG_LINE,
+    CHAR.ORG_AND_KIND,
+    pastRange ? `■ 지난 ${periodWord} 실적 (${pastRange})` : `■ 지난 ${periodWord} 실적`,
+  ));
+  parts.push(buildKindGroupedBody(round, submissions, 'past', { orgName, includeOrgLine: false }));
+
+  // 빈 줄
+  parts.push(P(PARA.BLANK, CHAR.BULLET_TEXT, '', { preset: 'blank' }));
+
+  // ▣ 이번 X 계획 ...
+  parts.push(P(
+    PARA.ORG_LINE,
+    CHAR.ORG_AND_KIND,
+    nextRange ? `■ 이번 ${periodWord} 계획 (${nextRange})` : `■ 이번 ${periodWord} 계획`,
+  ));
+  parts.push(buildKindGroupedBody(round, submissions, 'next', { orgName, includeOrgLine: false }));
+
+  return parts.join('');
+}
+
+// "2026-04-20" → "04.20." 형식
+function formatRangeMD(a, b) {
+  const compact = (s) => {
+    const m = String(s ?? '').match(/^\d{4}-(\d{2})-(\d{2})/);
+    return m ? `${m[1]}.${m[2]}.` : (s ?? '');
+  };
+  if (!a && !b) return '';
+  return `${compact(a)} ~ ${compact(b)}`;
 }
 
 // 주요 보고 본문 셀: important=true 항목만, kind별 그룹 없이 카테고리 순서대로 출력

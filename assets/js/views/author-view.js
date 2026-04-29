@@ -26,22 +26,48 @@ let activeTab = 'current';   // 'current' | 'archive'
 function emptyItem(person) {
   return { id: uuid(), text: '', date: '', org: '', person: person || '', important: false };
 }
+// 새 형식: { categoryId, past: [item], next: [item] }
+//   past = 지난 주(달) 실적, next = 이번 주(달) 계획
+//   주요 보고사항은 past+next 통합에서 important=true 항목만 추림
 function emptyEntry(categoryId, person) {
-  return { categoryId, items: [emptyItem(person)] };
+  return { categoryId, past: [emptyItem(person)], next: [] };
 }
 
-// Compat: 기존 past/next 형식이 들어오면 평탄화하여 새 단일 배열 형식으로 반환.
-// 새 형식: [{ categoryId, items: [{ id, content, important }] }]
+// Compat: 다양한 entries 형식을 새 {past, next} 배열로 정규화.
+//   1) 매우 옛날: { past: [{categoryId, items}], next: [{categoryId, items}] }
+//   2) 최근(통합): [{ categoryId, items: [...] }]   ← 모두 past 로 취급
+//   3) 새 형식:   [{ categoryId, past: [...], next: [...] }]
 function normalizeEntries(raw) {
-  if (Array.isArray(raw)) return raw;
+  // 3) 새 형식 그대로
+  if (Array.isArray(raw) && raw.every(e => 'past' in e || 'next' in e)) {
+    return raw.map(e => ({
+      categoryId: e.categoryId,
+      past: Array.isArray(e.past) ? e.past : [],
+      next: Array.isArray(e.next) ? e.next : [],
+    }));
+  }
+  // 2) 최근 통합 형식 → 모두 past 로
+  if (Array.isArray(raw)) {
+    return raw.map(e => ({
+      categoryId: e.categoryId,
+      past: Array.isArray(e.items) ? e.items : [],
+      next: [],
+    }));
+  }
+  // 1) 매우 옛날 형식
   if (raw && (Array.isArray(raw.past) || Array.isArray(raw.next))) {
     const map = new Map();
-    for (const arr of [raw.past ?? [], raw.next ?? []]) {
-      for (const ent of arr) {
-        const key = ent.categoryId;
-        if (!map.has(key)) map.set(key, { categoryId: key, items: [] });
-        map.get(key).items.push(...(ent.items ?? []));
-      }
+    for (const ent of (raw.past ?? [])) {
+      const key = ent?.categoryId;
+      if (!key) continue;
+      if (!map.has(key)) map.set(key, { categoryId: key, past: [], next: [] });
+      map.get(key).past.push(...(ent.items ?? []));
+    }
+    for (const ent of (raw.next ?? [])) {
+      const key = ent?.categoryId;
+      if (!key) continue;
+      if (!map.has(key)) map.set(key, { categoryId: key, past: [], next: [] });
+      map.get(key).next.push(...(ent.items ?? []));
     }
     return [...map.values()];
   }
@@ -321,10 +347,12 @@ function renderTopStatus(s) {
   const form = s.round.form === 'monthly' ? '월례' : '주례';
   const periodWord = s.round.form === 'monthly' ? '달' : '주';
   const range = `${s.round.rangeStart} ~ ${s.round.rangeEnd}`;
+  const nextRange = (s.round.nextRangeStart && s.round.nextRangeEnd)
+    ? ` · 이번 ${periodWord} ${s.round.nextRangeStart} ~ ${s.round.nextRangeEnd}` : '';
   const name = s.activeAuthorId
     ? (s.round.authorsSnapshot?.find(a => a.id === s.activeAuthorId)?.name || '(알 수 없음)')
     : '';
-  top.innerHTML = `<strong>${form}</strong> · 기준일 ${s.round.baseDate} · 지난 ${periodWord} ${range}`
+  top.innerHTML = `<strong>${form}</strong> · 기준일 ${s.round.baseDate} · 지난 ${periodWord} ${range}${nextRange}`
     + (name ? ` · 본인: <strong>${escapeHtml(name)}</strong> <button class="btn ghost small" id="change-author">변경</button>` : '');
   const change = $('#change-author');
   if (change) change.addEventListener('click', () => {
@@ -508,29 +536,56 @@ function renderCategoryBlock(s, sub, eIdx, locked) {
   }
   box.appendChild(head);
 
-  const itemsBox = document.createElement('div');
-  itemsBox.className = 'items';
-  for (let i = 0; i < entry.items.length; i++) {
-    itemsBox.appendChild(renderItemRow(s, sub, eIdx, i, locked));
-  }
-  box.appendChild(itemsBox);
+  // 안전: past/next 배열 보장
+  if (!Array.isArray(entry.past)) entry.past = [];
+  if (!Array.isArray(entry.next)) entry.next = [];
 
-  if (!locked) {
-    const add = document.createElement('button');
-    add.className = 'btn small'; add.textContent = '+ 수행내용 추가';
-    add.addEventListener('click', () => {
-      const myName = s.round.authorsSnapshot?.find(a => a.id === sub._id)?.name || '';
-      entry.items.push(emptyItem(myName));
-      scheduleSave(); render();
-    });
-    box.appendChild(add);
+  const periodWord = s.round.form === 'monthly' ? '달' : '주';
+
+  // 두 sub-section: 지난 X 실적 / 이번 X 계획
+  const sections = [
+    { side: 'past', label: `지난 ${periodWord} 실적`, items: entry.past },
+    { side: 'next', label: `이번 ${periodWord} 계획`, items: entry.next },
+  ];
+
+  for (const sec of sections) {
+    const subBox = document.createElement('div');
+    subBox.className = 'period-block';
+    subBox.style.marginTop = '8px';
+    const subHead = document.createElement('div');
+    subHead.className = 'muted tight';
+    subHead.style.fontWeight = '600';
+    subHead.style.margin = '4px 0';
+    subHead.textContent = `[${sec.label}]`;
+    subBox.appendChild(subHead);
+
+    const itemsBox = document.createElement('div');
+    itemsBox.className = 'items';
+    for (let i = 0; i < sec.items.length; i++) {
+      itemsBox.appendChild(renderItemRow(s, sub, eIdx, sec.side, i, locked));
+    }
+    subBox.appendChild(itemsBox);
+
+    if (!locked) {
+      const add = document.createElement('button');
+      add.className = 'btn small';
+      add.textContent = `+ ${sec.label} 항목 추가`;
+      add.addEventListener('click', () => {
+        const myName = s.round.authorsSnapshot?.find(a => a.id === sub._id)?.name || '';
+        entry[sec.side].push(emptyItem(myName));
+        scheduleSave(); render();
+      });
+      subBox.appendChild(add);
+    }
+    box.appendChild(subBox);
   }
   return box;
 }
 
-function renderItemRow(s, sub, eIdx, itemIdx, locked) {
+function renderItemRow(s, sub, eIdx, side, itemIdx, locked) {
   const entry = sub.entries[eIdx];
-  const it = entry.items[itemIdx];
+  const arr = entry[side];
+  const it = arr[itemIdx];
   const row = document.createElement('div');
   row.className = 'item-row';
 
@@ -573,23 +628,24 @@ function renderItemRow(s, sub, eIdx, itemIdx, locked) {
   const up = document.createElement('button');
   up.className = 'btn ghost small'; up.textContent = '↑'; up.disabled = locked || itemIdx === 0;
   up.addEventListener('click', () => {
-    [entry.items[itemIdx - 1], entry.items[itemIdx]] = [entry.items[itemIdx], entry.items[itemIdx - 1]];
+    [arr[itemIdx - 1], arr[itemIdx]] = [arr[itemIdx], arr[itemIdx - 1]];
     scheduleSave(); render();
   });
 
   const down = document.createElement('button');
   down.className = 'btn ghost small'; down.textContent = '↓';
-  down.disabled = locked || itemIdx === entry.items.length - 1;
+  down.disabled = locked || itemIdx === arr.length - 1;
   down.addEventListener('click', () => {
-    [entry.items[itemIdx + 1], entry.items[itemIdx]] = [entry.items[itemIdx], entry.items[itemIdx + 1]];
+    [arr[itemIdx + 1], arr[itemIdx]] = [arr[itemIdx], arr[itemIdx + 1]];
     scheduleSave(); render();
   });
 
   const del = document.createElement('button');
   del.className = 'btn ghost small'; del.textContent = '✕'; del.title = '삭제'; del.disabled = locked;
   del.addEventListener('click', () => {
-    entry.items.splice(itemIdx, 1);
-    if (entry.items.length === 0) sub.entries.splice(eIdx, 1);
+    arr.splice(itemIdx, 1);
+    // past/next 둘 다 비었으면 카테고리 자체 삭제
+    if (entry.past.length === 0 && entry.next.length === 0) sub.entries.splice(eIdx, 1);
     scheduleSave(); render();
   });
 
@@ -711,7 +767,10 @@ async function doSave(sub, finalize) {
     skipNextLocal = true;
     if (finalize) {
       // 최소 요구: 수행내용 + 수행자명이 채워진 항목이 1개 이상
-      const hasAny = (sub.entries ?? []).some(e => (e.items ?? []).some(i => (i.text || '').trim() && (i.person || '').trim()));
+      const hasAny = (sub.entries ?? []).some(e =>
+        ((e.past ?? []).concat(e.next ?? []))
+          .some(i => (i.text || '').trim() && (i.person || '').trim())
+      );
       if (!hasAny) {
         alert('수행내용과 수행자명을 최소 1개 입력해야 제출할 수 있습니다.');
         return;

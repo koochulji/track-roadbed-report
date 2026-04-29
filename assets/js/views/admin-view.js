@@ -348,10 +348,14 @@ function renderRoundTab(s) {
   const info = document.createElement('div');
   info.className = 'panel';
   const form = s.round.form === 'monthly' ? '월례' : '주례';
+  const periodWord = s.round.form === 'monthly' ? '달' : '주';
+  const nextRangeStr = (s.round.nextRangeStart && s.round.nextRangeEnd)
+    ? ` · 이번 ${periodWord} 계획 ${escapeHtml(s.round.nextRangeStart)} ~ ${escapeHtml(s.round.nextRangeEnd)}`
+    : '';
   info.innerHTML = `
     <h2>현재 활성 회차</h2>
     <div><strong>${form}</strong> · 기준일 ${escapeHtml(s.round.baseDate || '')}
-      · 보고 기간 ${escapeHtml(s.round.rangeStart)} ~ ${escapeHtml(s.round.rangeEnd)}</div>
+      · 지난 ${periodWord} 실적 ${escapeHtml(s.round.rangeStart)} ~ ${escapeHtml(s.round.rangeEnd)}${nextRangeStr}</div>
     <div class="muted">조직명: ${escapeHtml(s.round.orgName || '')}</div>
     <div class="row" style="margin-top:10px">
       <button class="btn primary" id="btn-hwpx">HWPX 출력</button>
@@ -474,8 +478,9 @@ function renderNewRoundForm(s) {
     const base = $('#nf-base', box).value;
     try {
       const r = computeRanges(form, base);
+      const periodWord = form === 'monthly' ? '달' : '주';
       $('#nf-range-preview', box).textContent =
-        `보고 기간 ${r.rangeStart} ~ ${r.rangeEnd}`;
+        `지난 ${periodWord} 실적 ${r.rangeStart} ~ ${r.rangeEnd} · 이번 ${periodWord} 계획 ${r.nextRangeStart} ~ ${r.nextRangeEnd}`;
     } catch {
       $('#nf-range-preview', box).textContent = '기준일을 선택해 주세요.';
     }
@@ -505,6 +510,7 @@ function renderNewRoundForm(s) {
       await createAndConfirmRound({
         form, baseDate: base,
         rangeStart: r.rangeStart, rangeEnd: r.rangeEnd,
+        nextRangeStart: r.nextRangeStart, nextRangeEnd: r.nextRangeEnd,
         orgName: org,
         authors: getState().authors,
         categories: getState().categories.length ? getState().categories : [],
