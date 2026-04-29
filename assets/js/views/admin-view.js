@@ -7,7 +7,7 @@ import { getDoc, doc } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase
 import {
   subscribeAuthors, subscribeCategories, subscribeCurrent,
   subscribeRound, subscribeSubmissions, subscribeRoundList,
-  addAuthor, removeAuthor,
+  addAuthor, removeAuthor, seedDefaultAuthors,
   seedDefaultCategories, addCategory, updateCategory, removeCategory,
   createAndConfirmRound, archiveCurrentRound, unlockSubmission,
   restoreArchivedRound, deleteRoundPermanently,
@@ -521,9 +521,23 @@ function renderNewRoundForm(s) {
 function renderAuthorsTab(s) {
   const box = document.createElement('div');
   box.innerHTML = '<h2>작성자 명단</h2>';
+
+  // 시드 / 리셋 툴바 (카테고리 탭과 동일한 패턴)
+  const toolbar = document.createElement('div');
+  toolbar.className = 'row';
+  toolbar.style.marginBottom = '8px';
+  toolbar.innerHTML = `
+    <button class="btn" id="btn-seed-authors">디폴트 10명으로 리셋 / 시드</button>
+    <span class="muted tight">궤도노반연구실 기본 작성자 10명을 한번에 등록합니다.</span>`;
+  $('#btn-seed-authors', toolbar).addEventListener('click', async () => {
+    if (!confirm('현재 작성자 명단을 디폴트 10명으로 덮어씁니다. 계속할까요?')) return;
+    await seedDefaultAuthors();
+  });
+  box.appendChild(toolbar);
+
   const listWrap = document.createElement('div');
   if (!s.authors.length) {
-    listWrap.innerHTML = '<div class="muted">아직 작성자가 없습니다.</div>';
+    listWrap.innerHTML = '<div class="muted">아직 작성자가 없습니다. 위 버튼으로 디폴트 10명을 시드하거나 아래에서 직접 추가하세요.</div>';
   } else {
     const tbl = document.createElement('table');
     tbl.className = 'data';
