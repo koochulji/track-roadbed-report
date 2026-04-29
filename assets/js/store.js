@@ -8,12 +8,43 @@ import { uuid } from './util/download.js';
 import { DEFAULT_ORG_NAME } from './firebase-config.js';
 
 export const DEFAULT_CATEGORIES = [
-  { kind: 'basic', title: '철도 운영 및 유지관리 고도화를 위한 디지털 트윈 플랫폼 핵심 기술 개발', owner: '박정준' },
-  { kind: 'basic', title: 'AX 기반 철도교통 현안 분석 지원 기술 개발', owner: '이상근' },
-  { kind: 'basic', title: 'AI 및 디지털 대전환을 위한 첨단 모빌리티 허브 핵심기술 개발', owner: '유승민' },
-  { kind: 'natl_rnd', title: 'GTX 환승센터 디지털 트윈 구축 및 혼잡도 예측 기술 개발', owner: '유승민' },
-  { kind: 'consign', title: '(국가철도공단)철도 유지관리 단계 BIM 시범적용 연구용역', owner: '김현기' },
-  { kind: 'etc', title: '기타', owner: '' },
+  // 기본사업
+  { kind: 'basic',    title: '철도 폐목침목 재활용 소재 제조 및 자원순환 기술 고도화', owner: '고태훈 수석, 이성혁 수석' },
+  { kind: 'basic',    title: '장대레일 성능기반 유지관리 체계 구축', owner: '배영훈 책임, 지구철 선임' },
+  { kind: 'basic',    title: '도시철도 콘크리트 궤도의 지속 가능한 유지보수를 위한 고내구성 방진체결장치 개발', owner: '배영훈 책임' },
+  { kind: 'basic',    title: '철도 화물역의 지역물류 거점화를 위한 인터모달 스마트 철도물류 터미널 모델 개발', owner: '최찬용 책임' },
+  { kind: 'basic',    title: '매니플레이터를 이용한 친환경 터널굴착 기술 개발', owner: '고태훈 수석' },
+  { kind: 'basic',    title: '철도건널목용 사전제작형 아스팔트콘크리트 궤도구조 개발', owner: '이성혁 수석' },
+  { kind: 'basic',    title: '최적 설계기법을 활용한 궤도구성품(레일 체결장치, 침목) 설계 기술 고도화 연구', owner: '정호연 선임, 지구철 선임' },
+  { kind: 'basic',    title: '자갈궤도기반 고속철도 운행속도 향상을 위한 궤도인프라 기술연구', owner: '김은 책임' },
+
+  // 국가R&D
+  { kind: 'natl_rnd', title: '차세대 철도시스템 하이퍼튜브 구현을 위한 핵심기술개발', owner: '김만철 수석, 김대상 수석' },
+  { kind: 'natl_rnd', title: '초고속 하이퍼튜브 아진공 핵심기술 개발', owner: '배영훈 책임' },
+
+  // 수탁사업
+  { kind: 'consign',  title: '미래 기후변화를 고려한 장대레일 안전성 강화 방안 연구용역', owner: '김만철 수석' },
+  { kind: 'consign',  title: '철도교 캠버량을 고려한 교량 및 궤도분야 관련 설계기준 정립 연구', owner: '황성호 책임' },
+  { kind: 'consign',  title: '철도구조물 유리섬유보강근(GFRP) 적용 확대방안 연구 용역', owner: '배영훈 책임' },
+  { kind: 'consign',  title: '운행선 인접 지하구간 철도건설사업을 위한 자갈궤도 진동허용기준 수립용역', owner: '최찬용 책임, 정호연 선임' },
+  { kind: 'consign',  title: '철도 시설분야 유지관리 기준 합리화 용역', owner: '김만철 수석, 정호연 선임' },
+  { kind: 'consign',  title: '수서고속철도 에폭시 직결궤도 안전성 검토 설계', owner: '배영훈 책임' },
+
+  // 기타
+  { kind: 'etc',      title: '전략연구사업 (400kph 인프라 ~)', owner: '김은 책임' },
+];
+
+export const DEFAULT_AUTHORS = [
+  { name: '지구철 선임' },
+  { name: '배영훈 책임' },
+  { name: '고태훈 수석' },
+  { name: '이성혁 수석' },
+  { name: '정호연 선임' },
+  { name: '김은 책임' },
+  { name: '김만철 수석' },
+  { name: '김대상 수석' },
+  { name: '황성호 책임' },
+  { name: '최찬용 책임' },
 ];
 
 // kind 표시명. 보고서의 대분류 표기 순서도 이 객체의 key 순서를 따른다.
@@ -49,6 +80,14 @@ export async function removeAuthor(id) {
   const snap = await getDoc(authorsRef);
   const members = snap.exists() ? (snap.data().members ?? []) : [];
   await setAuthors(members.filter(m => m.id !== id));
+}
+export async function seedDefaultAuthors() {
+  const members = DEFAULT_AUTHORS.map(a => ({
+    id: uuid(),
+    name: a.name,
+    createdAt: new Date().toISOString(),
+  }));
+  await setAuthors(members);
 }
 
 // ───── config/categories ─────
