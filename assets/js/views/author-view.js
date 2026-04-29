@@ -29,6 +29,24 @@ function emptyEntry(categoryId, person) {
   return { categoryId, items: [emptyItem(person)] };
 }
 
+// Compat: 기존 past/next 형식이 들어오면 평탄화하여 새 단일 배열 형식으로 반환.
+// 새 형식: [{ categoryId, items: [{ id, content, important }] }]
+function normalizeEntries(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (raw && (Array.isArray(raw.past) || Array.isArray(raw.next))) {
+    const map = new Map();
+    for (const arr of [raw.past ?? [], raw.next ?? []]) {
+      for (const ent of arr) {
+        const key = ent.categoryId;
+        if (!map.has(key)) map.set(key, { categoryId: key, items: [] });
+        map.get(key).items.push(...(ent.items ?? []));
+      }
+    }
+    return [...map.values()];
+  }
+  return [];
+}
+
 // 내 submission 문서 데이터 캐시
 let mySubmission = null;
 let saveTimer = null;
@@ -38,13 +56,11 @@ let warnedRemoteChange = false;  // 같은 라운드에서 경고를 반복하�
 
 // 깊은 복사가 필요한 것은 entries 만 (사용자가 편집하는 대상).
 // Firestore Timestamp 객체는 toMillis() 같은 메서드를 가지므로 JSON 직렬화로 잃어선 안 됨.
+// 구버전(past/next) submission 도 normalizeEntries 로 단일 배열로 평탄화.
 function cloneForLocalEdit(mine) {
   return {
     ...mine,
-    entries: {
-      past: JSON.parse(JSON.stringify(mine.entries?.past ?? [])),
-      next: JSON.parse(JSON.stringify(mine.entries?.next ?? [])),
-    },
+    entries: JSON.parse(JSON.stringify(normalizeEntries(mine.entries))),
   };
 }
 
@@ -259,7 +275,7 @@ function render() {
         _id: s.activeAuthorId,
         authorId: s.activeAuthorId,
         authorName: (s.authors.find(a => a.id === s.activeAuthorId) || {}).name || '',
-        entries: { past: [], next: [] },
+        entries: [],
         status: 'idle',
       };
       lastKnownRemoteSavedMs = 0;
@@ -374,9 +390,8 @@ function renderSubmissionEditor(s, sub) {
     wrap.appendChild(lockBox);
   }
 
-  // 두 섹션 렌더
-  wrap.appendChild(renderSection(s, sub, 'past', locked));
-  wrap.appendChild(renderSection(s, sub, 'next', locked));
+  // 단일 섹션 렌더 (과제별)
+  wrap.appendChild(renderEntriesSection(s, sub, locked));
 
   // 액션 바
   const bar = document.createElement('div');
@@ -401,19 +416,16 @@ function renderSubmissionEditor(s, sub) {
   return wrap;
 }
 
-function renderSection(s, sub, side, locked) {
-  const label = side === 'past'
-    ? (s.round.form === 'monthly' ? '지난 달 실적' : '지난 주 실적')
-    : (s.round.form === 'monthly' ? '이번 달 계획' : '이번 주 계획');
+function renderEntriesSection(s, sub, locked) {
   const box = document.createElement('div');
   box.className = 'author-block';
-  box.innerHTML = `<h3>${label} <span class="muted tight">${side === 'past' ? `(${s.round.rangeStart} ~ ${s.round.rangeEnd})` : `(${s.round.nextRangeStart} ~ ${s.round.nextRangeEnd})`}</span></h3>`;
-  const entries = sub.entries?.[side] ?? [];
+  box.innerHTML = `<h3>활동 항목 (과제별) <span class="muted tight">(${s.round.rangeStart} ~ ${s.round.rangeEnd})</span></h3>`;
+  const entries = sub.entries ?? [];
   const catList = s.round.categoriesSnapshot ?? [];
   const usedCatIds = new Set(entries.map(e => e.categoryId));
 
   for (let eIdx = 0; eIdx < entries.length; eIdx++) {
-    box.appendChild(renderCategoryBlock(s, sub, side, eIdx, locked));
+    box.appendChild(renderCategoryBlock(s, sub, eIdx, locked));
   }
 
   if (!locked) {
@@ -444,9 +456,8 @@ function renderSection(s, sub, side, locked) {
       const v = sel.value;
       if (!v) return;
       const myName = s.round.authorsSnapshot?.find(a => a.id === sub._id)?.name || '';
-      if (!sub.entries) sub.entries = { past: [], next: [] };
-      if (!sub.entries[side]) sub.entries[side] = [];
-      sub.entries[side].push(emptyEntry(v, myName));
+      if (!Array.isArray(sub.entries)) sub.entries = [];
+      sub.entries.push(emptyEntry(v, myName));
       scheduleSave();
       render();
     });
@@ -455,8 +466,8 @@ function renderSection(s, sub, side, locked) {
   return box;
 }
 
-function renderCategoryBlock(s, sub, side, eIdx, locked) {
-  const entry = sub.entries[side][eIdx];
+function renderCategoryBlock(s, sub, eIdx, locked) {
+  const entry = sub.entries[eIdx];
   const cat = s.round.categoriesSnapshot.find(c => c.id === entry.categoryId);
   const box = document.createElement('div');
   box.className = 'cat-block';
@@ -470,7 +481,7 @@ function renderCategoryBlock(s, sub, side, eIdx, locked) {
     rm.className = 'btn ghost small'; rm.textContent = '카테고리 삭제';
     rm.addEventListener('click', () => {
       if (!confirm('이 카테고리와 입력한 수행내용들을 삭제합니다.')) return;
-      sub.entries[side].splice(eIdx, 1);
+      sub.entries.splice(eIdx, 1);
       scheduleSave(); render();
     });
     head.appendChild(rm);
@@ -480,7 +491,7 @@ function renderCategoryBlock(s, sub, side, eIdx, locked) {
   const itemsBox = document.createElement('div');
   itemsBox.className = 'items';
   for (let i = 0; i < entry.items.length; i++) {
-    itemsBox.appendChild(renderItemRow(s, sub, side, eIdx, i, locked));
+    itemsBox.appendChild(renderItemRow(s, sub, eIdx, i, locked));
   }
   box.appendChild(itemsBox);
 
@@ -497,8 +508,8 @@ function renderCategoryBlock(s, sub, side, eIdx, locked) {
   return box;
 }
 
-function renderItemRow(s, sub, side, eIdx, itemIdx, locked) {
-  const entry = sub.entries[side][eIdx];
+function renderItemRow(s, sub, eIdx, itemIdx, locked) {
+  const entry = sub.entries[eIdx];
   const it = entry.items[itemIdx];
   const row = document.createElement('div');
   row.className = 'item-row';
@@ -558,7 +569,7 @@ function renderItemRow(s, sub, side, eIdx, itemIdx, locked) {
   del.className = 'btn ghost small'; del.textContent = '✕'; del.title = '삭제'; del.disabled = locked;
   del.addEventListener('click', () => {
     entry.items.splice(itemIdx, 1);
-    if (entry.items.length === 0) sub.entries[side].splice(eIdx, 1);
+    if (entry.items.length === 0) sub.entries.splice(eIdx, 1);
     scheduleSave(); render();
   });
 
@@ -599,8 +610,8 @@ async function doSave(sub, finalize) {
   try {
     skipNextLocal = true;
     if (finalize) {
-      // 최소 요구: 본인 이름이 채워진 항목이 1개 이상
-      const hasAny = ['past', 'next'].some(side => (sub.entries?.[side] || []).some(e => e.items.some(i => (i.text || '').trim() && (i.person || '').trim())));
+      // 최소 요구: 수행내용 + 수행자명이 채워진 항목이 1개 이상
+      const hasAny = (sub.entries ?? []).some(e => (e.items ?? []).some(i => (i.text || '').trim() && (i.person || '').trim()));
       if (!hasAny) {
         alert('수행내용과 수행자명을 최소 1개 입력해야 제출할 수 있습니다.');
         return;

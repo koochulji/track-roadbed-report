@@ -181,7 +181,7 @@ export async function createAndConfirmRound(params) {
       tx.set(subRef, {
         authorId: a.id,
         authorName: a.name,
-        entries: { past: [], next: [] },
+        entries: [],   // [{ categoryId, items: [{ id, content, important }] }]
         status: 'idle',
         lastSavedAt: serverTimestamp(),
       });
