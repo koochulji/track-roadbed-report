@@ -8,7 +8,7 @@ import {
   subscribeAuthors, subscribeCategories, subscribeCurrent,
   subscribeRound, subscribeSubmissions, subscribeRoundList,
   addAuthor, removeAuthor, seedDefaultAuthors,
-  seedDefaultCategories, addCategory, updateCategory, removeCategory,
+  seedDefaultCategories, addCategory, updateCategory, removeCategory, swapCategoryOrder,
   createAndConfirmRound, archiveCurrentRound, unlockSubmission,
   restoreArchivedRound, deleteRoundPermanently,
   getAllSubmissions, kindLabelKor,
@@ -625,14 +625,12 @@ function renderCategoriesTab(s) {
       tr.querySelector('[data-act="up"]').addEventListener('click', async () => {
         if (idx === 0) return;
         const prev = sorted[idx - 1];
-        await updateCategory(c.id, { order: prev.order });
-        await updateCategory(prev.id, { order: c.order });
+        await swapCategoryOrder(c.id, prev.id);
       });
       tr.querySelector('[data-act="down"]').addEventListener('click', async () => {
         if (idx === sorted.length - 1) return;
         const next = sorted[idx + 1];
-        await updateCategory(c.id, { order: next.order });
-        await updateCategory(next.id, { order: c.order });
+        await swapCategoryOrder(c.id, next.id);
       });
       tb.appendChild(tr);
     });

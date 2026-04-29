@@ -151,6 +151,21 @@ export async function updateCategory(id, patch) {
   const items = snap.exists() ? (snap.data().items ?? []) : [];
   await setCategories(items.map(i => i.id === id ? { ...i, ...patch } : i));
 }
+
+// 두 카테고리의 order 를 한 번의 쓰기로 교환.
+// updateCategory 를 두 번 호출하면 onSnapshot 사이에 일관성이 깨질 수 있어 atomic swap 사용.
+export async function swapCategoryOrder(idA, idB) {
+  const snap = await getDoc(categoriesRef);
+  if (!snap.exists()) return;
+  const items = [...(snap.data().items ?? [])];
+  const a = items.find(i => i.id === idA);
+  const b = items.find(i => i.id === idB);
+  if (!a || !b) return;
+  const tmp = a.order ?? 0;
+  a.order = b.order ?? 0;
+  b.order = tmp;
+  await setCategories(items);
+}
 export async function removeCategory(id) {
   const snap = await getDoc(categoriesRef);
   const items = snap.exists() ? (snap.data().items ?? []) : [];
