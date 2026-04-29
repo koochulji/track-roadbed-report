@@ -440,7 +440,7 @@ function renderRoundTab(s) {
   const preview = document.createElement('div');
   preview.className = 'panel';
   preview.innerHTML = '<h2>취합 미리보기 (HTML)</h2>';
-  preview.appendChild(renderPreview(s.round, submissions));
+  preview.appendChild(renderPreview(s.round, submissions, s.categories));
   box.appendChild(preview);
 
   return box;

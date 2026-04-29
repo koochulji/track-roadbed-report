@@ -335,7 +335,7 @@ function render() {
   // 내 로컬 편집을 반영한 병합 submissions 생성
   const merged = s.submissions.map(x => x._id === s.activeAuthorId ? mySubmission : x);
   if (!merged.some(x => x._id === s.activeAuthorId)) merged.push(mySubmission);
-  previewEl.appendChild(renderPreview(s.round, merged));
+  previewEl.appendChild(renderPreview(s.round, merged, s.categories));
 }
 
 function renderTopStatus(s) {
@@ -671,7 +671,7 @@ function updatePreviewOnly() {
   if (!merged.some(x => x._id === s.activeAuthorId)) merged.push(mySubmission);
   const previewEl = $('#preview-area');
   previewEl.innerHTML = '';
-  previewEl.appendChild(renderPreview(s.round, merged));
+  previewEl.appendChild(renderPreview(s.round, merged, s.categories));
 }
 
 // 새 과제 만들기 모달.
