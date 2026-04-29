@@ -394,7 +394,8 @@ function renderTopStatus(s) {
     ? (s.round.authorsSnapshot?.find(a => a.id === s.activeAuthorId)?.name || '(알 수 없음)')
     : '';
   top.innerHTML = `<strong>${form}</strong> · 기준일 ${s.round.baseDate} · 지난 ${periodWord} ${range}${nextRange}`
-    + (name ? ` · 본인: <strong>${escapeHtml(name)}</strong> <button class="btn ghost small" id="change-author">변경</button>` : '');
+    + (name ? ` · 본인: <strong>${escapeHtml(name)}</strong> <button class="btn small" id="change-author" style="margin-left:6px" title="다른 작성자로 변경">🔄 본인 변경</button>` : '')
+    + ` · <a href="./help.html" target="_blank" style="color:#1d4ed8;text-decoration:none;font-weight:600">📖 사용법</a>`;
   const change = $('#change-author');
   if (change) change.addEventListener('click', () => {
     mySubmission = null;
