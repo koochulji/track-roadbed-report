@@ -34,23 +34,31 @@ function formatRange(a, b) {
 
 function renderMainBody(orgName, categories, itemsByCat) {
   const cats = [...categories].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  let html = `<div class="org">${escape(orgName)}</div>`;
+  // 본부장/실장 활동사항 placeholder (박사님이 한글에서 직접 채움)
+  let html = `
+    <div class="kind">&lt;궤도토목본부장 활동사항&gt;</div>
+    <div class="muted" style="white-space:pre">∘ </div>
+    <div class="muted" style="white-space:pre">  - </div>
+    <div style="border-top:1px dashed #999;margin:6px 0"></div>
+    <div class="org">${escape(orgName)}</div>
+    <div class="kind">&lt;궤도노반연구실장 활동사항&gt;</div>
+    <div class="muted" style="white-space:pre">∘ </div>
+    <div class="muted" style="white-space:pre">∘ </div>
+    <div style="border-top:1px dashed #999;margin:6px 0"></div>
+  `;
   let counter = 0;
   for (const cat of cats) {
     const items = itemsByCat[cat.id] ?? [];
     if (items.length === 0) continue;
     counter += 1;
     const kindPrefix = `[${KIND_NAMES[cat.kind] ?? cat.kind}]`;
-    const ownerSuffix = cat.owner ? `(${escape(cat.owner)})` : '';
-    html += `<div class="project">(${counter}) ${escape(kindPrefix)} ${escape(cat.title)} <span class="muted">${ownerSuffix}</span></div>`;
+    const ownerSuffix = cat.owner ? ` (${escape(cat.owner)})` : '';
+    html += `<div class="project">(${counter}) ${escape(kindPrefix)} ${escape(cat.title)}<span class="muted">${ownerSuffix}</span></div>`;
     html += '<ul class="items">';
     for (const it of items) {
       html += `<li class="important">${escape(formatItem(it))}</li>`;
     }
     html += '</ul>';
-  }
-  if (counter === 0) {
-    html += '<div class="muted">(주요 보고 항목 없음)</div>';
   }
   return html;
 }
