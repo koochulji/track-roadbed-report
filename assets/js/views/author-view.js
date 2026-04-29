@@ -288,6 +288,18 @@ function render() {
     mySubmission.submittedAt = mine.submittedAt;
   }
 
+  // 사용자가 입력 중이면 editor 재빌드 건너뛰기 (포커스 유지).
+  // 자동저장 후 Firestore snapshot echo로 인한 강제 재렌더링이 input을 파괴해
+  // 커서가 빠지는 버그 방지. 미리보기와 상태바만 업데이트.
+  const ae = document.activeElement;
+  const editorIsFocused = ae && main.contains(ae)
+    && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
+  if (editorIsFocused) {
+    updatePreviewOnly();
+    updateSaveStatus(mySubmission);
+    return;
+  }
+
   main.innerHTML = '';
   main.appendChild(renderSubmissionEditor(s, mySubmission));
 
