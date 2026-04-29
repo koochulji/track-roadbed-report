@@ -309,10 +309,11 @@ function render() {
     }
     warnedRemoteChange = false;
 
-    // 본인 선택 직후 entries 가 비어있으면, 본인이 담당자/공동책임자로 등록된
-    // 카테고리들을 자동 prefill. 입력 부담 줄이기 위함.
-    // 단, 사용자가 손대기 전이라 자동 저장하지 않음 (입력하면 그때 저장됨).
-    if (Array.isArray(mySubmission.entries) && mySubmission.entries.length === 0) {
+    // 본인 선택 직후, 본인이 담당자/공동책임자로 등록된 카테고리 중
+    // 아직 entries 에 없는 것만 자동 추가. 입력 부담 줄이기 위함.
+    // 이미 있는 entries 는 안 건드림 (사용자 입력 데이터 보존).
+    // 사용자가 손대기 전엔 자동 저장 안 함 (입력하면 그때 저장됨).
+    if (Array.isArray(mySubmission.entries)) {
       const myName = (s.round.authorsSnapshot?.find(a => a.id === s.activeAuthorId)?.name
                       || mySubmission.authorName || '').trim();
       if (myName) {
@@ -325,18 +326,26 @@ function render() {
         for (const c of snap) catMap.set(c.id, c);
         for (const c of master) if (!catMap.has(c.id)) catMap.set(c.id, c);
         const allCats = [...catMap.values()];
-        // 본인 이름이 owner 에 포함된 카테고리 추출
+        // 본인 이름이 owner 에 포함된 카테고리
         const myCats = allCats.filter(c => {
           const owner = (c.owner || '').trim();
           if (!owner) return false;
           return owner.includes(myName) || (coreName && owner.includes(coreName));
         });
-        if (myCats.length > 0) {
-          mySubmission.entries = myCats.map(cat => ({
-            categoryId: cat.id,
-            past: [emptyItem(myName)],
-            next: [],
-          }));
+        // 이미 entries 에 들어있는 categoryId 셋
+        const existingIds = new Set(mySubmission.entries.map(e => e.categoryId));
+        // 빠진 본인 담당 과제만 추가
+        const missingCats = myCats.filter(c => !existingIds.has(c.id));
+        if (missingCats.length > 0) {
+          // 카테고리 order 기준으로 정렬해서 추가
+          missingCats.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+          for (const cat of missingCats) {
+            mySubmission.entries.push({
+              categoryId: cat.id,
+              past: [emptyItem(myName)],
+              next: [],
+            });
+          }
         }
       }
     }
