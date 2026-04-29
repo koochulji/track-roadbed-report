@@ -5,6 +5,7 @@ import {
   subscribeRound, subscribeSubmissions, subscribeRoundList,
   saveDraft, finalSubmit, submissionRef, unlockSubmission,
   getAllSubmissions, kindLabelKor, KIND_ORDER,
+  addCategoryToActiveRound,
 } from '../store.js';
 import { getDoc } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 import { getState, patchState, subscribe } from '../state.js';
@@ -447,7 +448,7 @@ function renderEntriesSection(s, sub, locked) {
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     sortedCats.push(...unknowns);
 
-    sel.innerHTML = '<option value="">+ 카테고리 추가</option>'
+    sel.innerHTML = '<option value="">+ 기존 과제 선택</option>'
       + sortedCats
         .map(c => `<option value="${c.id}">[${kindLabelKor(c.kind)}] ${escapeHtml(c.title)}${c.owner ? ' (' + escapeHtml(c.owner) + ')' : ''}</option>`)
         .join('');
@@ -461,6 +462,13 @@ function renderEntriesSection(s, sub, locked) {
       scheduleSave();
       render();
     });
+
+    // 새 과제 만들기 버튼 (목록에 없는 과제를 직접 추가)
+    const addNewBtn = document.createElement('button');
+    addNewBtn.className = 'btn';
+    addNewBtn.textContent = '🆕 새 과제 만들기';
+    addNewBtn.addEventListener('click', () => openNewCategoryDialog(s, sub));
+    addWrap.appendChild(addNewBtn);
     box.appendChild(addWrap);
   }
   return box;
@@ -585,6 +593,86 @@ function updatePreviewOnly() {
   const previewEl = $('#preview-area');
   previewEl.innerHTML = '';
   previewEl.appendChild(renderPreview(s.round, merged));
+}
+
+// 새 과제 만들기 모달.
+// 작성자가 즉석에서 새 과제(카테고리)를 추가할 때 사용.
+// 작성된 과제는 마스터 카테고리 목록 + 활성 회차 categoriesSnapshot 양쪽에 동시 반영.
+function openNewCategoryDialog(s, sub) {
+  // 이미 열린 다이얼로그 있으면 제거
+  const old = document.getElementById('new-category-dialog');
+  if (old) old.remove();
+
+  const dlg = document.createElement('dialog');
+  dlg.id = 'new-category-dialog';
+  dlg.innerHTML = `
+    <div class="dlg-header">새 과제 만들기</div>
+    <div class="dlg-body">
+      <div class="field">
+        <label>사업 종류</label>
+        <select id="nc-kind">
+          <option value="basic">기본사업</option>
+          <option value="natl_rnd">국가R&D</option>
+          <option value="consign">수탁사업</option>
+          <option value="etc">기타</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>과제명</label>
+        <input id="nc-title" type="text" placeholder="예: 새 연구 과제명" />
+      </div>
+      <div class="field">
+        <label>책임자 (선택)</label>
+        <input id="nc-owner" type="text" placeholder="예: 홍길동 책임" />
+      </div>
+      <div class="muted tight">
+        ※ 추가하면 모든 작성자에게 즉시 보입니다. 수정·삭제는 관리자만 가능합니다.
+      </div>
+    </div>
+    <div class="dlg-actions">
+      <button class="btn" id="nc-cancel">취소</button>
+      <button class="btn primary" id="nc-confirm">추가</button>
+    </div>
+  `;
+  document.body.appendChild(dlg);
+  dlg.showModal();
+
+  const titleInput = dlg.querySelector('#nc-title');
+  titleInput.focus();
+
+  const close = () => { dlg.close(); dlg.remove(); };
+  dlg.querySelector('#nc-cancel').addEventListener('click', close);
+
+  dlg.querySelector('#nc-confirm').addEventListener('click', async () => {
+    const kind = dlg.querySelector('#nc-kind').value;
+    const title = dlg.querySelector('#nc-title').value.trim();
+    const owner = dlg.querySelector('#nc-owner').value.trim();
+    if (!title) {
+      alert('과제명을 입력해주세요.');
+      return;
+    }
+    const btn = dlg.querySelector('#nc-confirm');
+    btn.disabled = true;
+    btn.textContent = '추가 중…';
+    try {
+      const newCat = await addCategoryToActiveRound({ kind, title, owner });
+      // 새로 만든 과제로 곧바로 항목 입력 시작
+      const myName = s.round.authorsSnapshot?.find(a => a.id === sub._id)?.name || '';
+      if (!Array.isArray(sub.entries)) sub.entries = [];
+      sub.entries.push(emptyEntry(newCat.id, myName));
+      scheduleSave();
+      close();
+      render();
+    } catch (e) {
+      console.error('과제 추가 실패', e);
+      alert('과제 추가 실패: ' + (e.message || e));
+      btn.disabled = false;
+      btn.textContent = '추가';
+    }
+  });
+
+  // ESC로도 닫기
+  dlg.addEventListener('cancel', close);
 }
 
 function updateSaveStatus(sub) {

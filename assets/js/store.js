@@ -113,6 +113,39 @@ export async function addCategory(data) {
   items.push({ id: uuid(), isDefault: false, order: items.length, ...data });
   await setCategories(items);
 }
+
+// 작성자가 활성 회차에서 새 과제를 추가할 때 호출.
+// 마스터 카테고리(/config/categories)와 활성 회차의 categoriesSnapshot 양쪽에 동일 ID로 추가.
+// 회차 진행 중에도 작성자가 실시간으로 새 과제를 잡을 수 있게 한다.
+export async function addCategoryToActiveRound(data) {
+  const newCat = {
+    id: uuid(),
+    kind: data.kind,
+    title: data.title,
+    owner: data.owner ?? '',
+    isDefault: false,
+  };
+
+  // 1) 마스터 카테고리에 append
+  const cSnap = await getDoc(categoriesRef);
+  const masterItems = cSnap.exists() ? [...(cSnap.data().items ?? [])] : [];
+  await setCategories([...masterItems, { ...newCat, order: masterItems.length }]);
+
+  // 2) 현재 활성 회차의 categoriesSnapshot 에도 append (회차 즉시 반영)
+  const curSnap = await getDoc(currentRef);
+  const roundId = curSnap.exists() ? curSnap.data().roundId : null;
+  if (roundId) {
+    await runTransaction(db, async (tx) => {
+      const rs = await tx.get(roundRef(roundId));
+      if (!rs.exists()) return;
+      const snap = rs.data().categoriesSnapshot ?? [];
+      tx.update(roundRef(roundId), {
+        categoriesSnapshot: [...snap, { ...newCat, order: snap.length }],
+      });
+    });
+  }
+  return newCat;
+}
 export async function updateCategory(id, patch) {
   const snap = await getDoc(categoriesRef);
   const items = snap.exists() ? (snap.data().items ?? []) : [];
