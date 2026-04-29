@@ -601,9 +601,9 @@ function renderCategoriesTab(s) {
     tbl.innerHTML = `<thead><tr>
       <th style="width:90px">종류</th>
       <th>제목</th>
-      <th style="width:120px">담당자</th>
+      <th style="width:140px">담당자</th>
       <th style="width:80px">순서</th>
-      <th style="width:100px"></th>
+      <th style="width:140px"></th>
     </tr></thead><tbody></tbody>`;
     const tb = tbl.querySelector('tbody');
     const sorted = [...s.categories].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -617,10 +617,16 @@ function renderCategoriesTab(s) {
           <button class="btn ghost small" data-act="up" ${idx === 0 ? 'disabled' : ''}>↑</button>
           <button class="btn ghost small" data-act="down" ${idx === sorted.length - 1 ? 'disabled' : ''}>↓</button>
         </td>
-        <td><button class="btn small danger" data-act="del">삭제</button></td>`;
+        <td>
+          <button class="btn small" data-act="edit">✏️ 수정</button>
+          <button class="btn small danger" data-act="del">삭제</button>
+        </td>`;
       tr.querySelector('[data-act="del"]').addEventListener('click', async () => {
-        if (!confirm('삭제할까요?')) return;
+        if (!confirm(`${c.title} 을(를) 삭제할까요?`)) return;
         await removeCategory(c.id);
+      });
+      tr.querySelector('[data-act="edit"]').addEventListener('click', () => {
+        openEditCategoryDialog(c);
       });
       tr.querySelector('[data-act="up"]').addEventListener('click', async () => {
         if (idx === 0) return;
@@ -793,6 +799,79 @@ async function boot() {
     }
   }
   renderAuthLanding('');
+}
+
+// 카테고리 편집 모달 (수정 버튼 핸들러).
+// 종류/제목/담당자 모두 변경 가능. 저장 시 updateCategory 1회 호출.
+function openEditCategoryDialog(c) {
+  const old = document.getElementById('edit-category-dialog');
+  if (old) old.remove();
+
+  const dlg = document.createElement('dialog');
+  dlg.id = 'edit-category-dialog';
+  dlg.innerHTML = `
+    <div class="dlg-header">과제 수정</div>
+    <div class="dlg-body">
+      <div class="field">
+        <label>사업 종류</label>
+        <select id="ec-kind">
+          <option value="basic">기본사업</option>
+          <option value="natl_rnd">국가R&D</option>
+          <option value="consign">수탁사업</option>
+          <option value="etc">기타</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>과제명</label>
+        <input id="ec-title" type="text" />
+      </div>
+      <div class="field">
+        <label>책임자 (선택)</label>
+        <input id="ec-owner" type="text" placeholder="예: 홍길동 책임" />
+      </div>
+      <div class="muted tight">
+        ※ 변경사항은 즉시 모든 사용자에게 반영됩니다.
+      </div>
+    </div>
+    <div class="dlg-actions">
+      <button class="btn" id="ec-cancel">취소</button>
+      <button class="btn primary" id="ec-confirm">저장</button>
+    </div>
+  `;
+  document.body.appendChild(dlg);
+  dlg.showModal();
+
+  // 기존 값 채우기
+  dlg.querySelector('#ec-kind').value = c.kind ?? 'basic';
+  dlg.querySelector('#ec-title').value = c.title ?? '';
+  dlg.querySelector('#ec-owner').value = c.owner ?? '';
+  dlg.querySelector('#ec-title').focus();
+
+  const close = () => { dlg.close(); dlg.remove(); };
+  dlg.querySelector('#ec-cancel').addEventListener('click', close);
+  dlg.addEventListener('cancel', close);
+
+  dlg.querySelector('#ec-confirm').addEventListener('click', async () => {
+    const kind = dlg.querySelector('#ec-kind').value;
+    const title = dlg.querySelector('#ec-title').value.trim();
+    const owner = dlg.querySelector('#ec-owner').value.trim();
+    if (!title) {
+      alert('과제명을 입력해주세요.');
+      return;
+    }
+    const btn = dlg.querySelector('#ec-confirm');
+    btn.disabled = true;
+    btn.textContent = '저장 중…';
+    try {
+      await updateCategory(c.id, { kind, title, owner });
+      close();
+    } catch (e) {
+      console.error('과제 수정 실패', e);
+      alert('과제 수정 실패: ' + (e.message || e));
+      btn.disabled = false;
+      btn.textContent = '저장';
+    }
+  });
 }
 
 boot();
