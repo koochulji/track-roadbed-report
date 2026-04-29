@@ -16,14 +16,17 @@ function lineseg(preset) {
   return `<hp:linesegarray><hp:lineseg textpos="0" vertpos="0" vertsize="${p.vertsize}" textheight="${p.textheight}" baseline="${p.baseline}" spacing="${p.spacing}" horzpos="${p.horzpos}" horzsize="${p.horzsize}" flags="${p.flags}"/></hp:linesegarray>`;
 }
 
-// 단일 run 문단. (짧은 텍스트용 — 캐시된 lineseg 사용 OK)
-function P(paraId, charId, text, { preset = 'orgKindProject' } = {}) {
+// 단일 run 문단.
+// preset:'auto' (기본) → linesegarray 생략하여 한글이 직접 줄바꿈/자간 계산.
+//   긴 텍스트가 셀 너비를 넘을 때 자간 압축 또는 다음 줄과 텍스트 겹침 버그 방지.
+function P(paraId, charId, text, { preset = 'auto' } = {}) {
   const t = text === '' || text == null
     ? '<hp:t/>'
     : `<hp:t>${xmlEscape(text)}</hp:t>`;
+  const seg = preset === 'auto' ? '' : lineseg(preset);
   return `<hp:p id="2147483648" paraPrIDRef="${paraId}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">`
     + `<hp:run charPrIDRef="${charId}">${t}</hp:run>`
-    + lineseg(preset)
+    + seg
     + `</hp:p>`;
 }
 
@@ -98,6 +101,11 @@ function kindLabel(kind, idx) {
   return `(${idx}) ${KIND_NAMES[kind] ?? kind}`;
 }
 
+// 일반보고 양식의 kind 헤더: "<기본사업>" 형식 (꺽쇠 포함)
+function kindHeaderLabel(kind) {
+  return `<${KIND_NAMES[kind] ?? kind}>`;
+}
+
 // Compat: 기존 past/next 또는 새 단일 배열 모두 처리
 function flattenSubmissionEntries(sub) {
   const e = sub?.entries;
@@ -145,51 +153,49 @@ export function aggregateItems(submissions, { onlyImportant = false } = {}) {
   return out;
 }
 
-// 일반 보고 본문 셀: 모든 항목을 kind별 그룹핑 (기본→국가R&D→수탁→기타)
+// 일반 보고 본문 셀: 궤도노반연구실 양식
+//   [궤도노반연구실]
+//   <기본사업>
+//   (1) 과제명 (책임자)
+//    - 항목 1
+//    - 항목 2
+//   (2) 과제명 (책임자)
+//   <국가R&D>
+//   (9) 과제명 ...
 export function buildGeneralReportBody(round, submissions, { orgName = '[궤도노반연구실]' } = {}) {
   const categories = round.categoriesSnapshot ?? [];
   const itemsByCat = aggregateItems(submissions);
 
-  // 존재하는 kind 만 필터하여 연속 번호 매김 ((1), (2), ...)
   const existingKinds = KIND_ORDER.filter(k => categories.some(c => c.kind === k));
 
   const parts = [];
-  // 조직명 라인 (항상 선두)
   parts.push(P(PARA.ORG_LINE, CHAR.ORG_AND_KIND, orgName));
 
-  existingKinds.forEach((kind, idx) => {
-    // 카테고리 관리 탭에서 조정한 order 값 기준으로 정렬
+  let projectCounter = 0;
+  for (const kind of existingKinds) {
     const kindsCats = categories
       .filter(c => c.kind === kind)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
-    // 대분류 라인
-    if (kind === 'etc') {
-      parts.push(P(PARA.ETC_KIND, CHAR.ETC_KIND_TEXT, kindLabel(kind, idx + 1)));
-    } else {
-      parts.push(P(PARA.ORG_LINE, CHAR.ORG_AND_KIND, kindLabel(kind, idx + 1)));
-    }
+    // 대분류 헤더: "<기본사업>"
+    parts.push(P(PARA.ORG_LINE, CHAR.ORG_AND_KIND, kindHeaderLabel(kind)));
 
     for (const cat of kindsCats) {
       const items = itemsByCat[cat.id] ?? [];
-      // 과제 라인은 항상 출력 (항목이 없어도 "- 과제명(담당자)" 라인 표시)
-      // 단, '기타' kind 에서는 과제 라인 대신 바로 불릿 항목만 나열.
-      if (kind !== 'etc') {
-        const ownerSuffix = cat.owner ? `(${cat.owner})` : '';
-        parts.push(Pmulti(PARA.PROJECT_LINE, [
-          [CHAR.ORG_AND_KIND, ' - '],
-          [CHAR.PROJECT_TITLE, `${cat.title}${ownerSuffix}`],
-        ]));
-      }
+      projectCounter += 1;
+      const ownerSuffix = cat.owner ? ` (${cat.owner})` : '';
+      // 과제 라인: "(N) 과제명 (책임자)"
+      parts.push(Pmulti(PARA.PROJECT_LINE, [
+        [CHAR.ORG_AND_KIND, `(${projectCounter}) `],
+        [CHAR.PROJECT_TITLE, `${cat.title}${ownerSuffix}`],
+      ]));
+      // 항목 bullet
       for (const it of items) {
         const charId = it.important ? CHAR.BULLET_BOLD : CHAR.BULLET_TEXT;
         parts.push(P(PARA.BULLET, charId, formatItem(it), { preset: 'bullet' }));
       }
     }
-    // 카테고리 섹션 끝에 빈 줄
-    parts.push(P(PARA.BLANK, CHAR.BULLET_TEXT, '', { preset: 'blank' }));
-  });
-
+  }
   return parts.join('');
 }
 
