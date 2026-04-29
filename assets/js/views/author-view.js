@@ -306,12 +306,12 @@ function renderTopStatus(s) {
     return;
   }
   const form = s.round.form === 'monthly' ? '월례' : '주례';
+  const periodWord = s.round.form === 'monthly' ? '달' : '주';
   const range = `${s.round.rangeStart} ~ ${s.round.rangeEnd}`;
-  const rangeNext = `${s.round.nextRangeStart} ~ ${s.round.nextRangeEnd}`;
   const name = s.activeAuthorId
     ? (s.round.authorsSnapshot?.find(a => a.id === s.activeAuthorId)?.name || '(알 수 없음)')
     : '';
-  top.innerHTML = `<strong>${form}</strong> · 기준일 ${s.round.baseDate} · 지난주 ${range} · 이번주 ${rangeNext}`
+  top.innerHTML = `<strong>${form}</strong> · 기준일 ${s.round.baseDate} · 지난 ${periodWord} ${range}`
     + (name ? ` · 본인: <strong>${escapeHtml(name)}</strong> <button class="btn ghost small" id="change-author">변경</button>` : '');
   const change = $('#change-author');
   if (change) change.addEventListener('click', () => {
@@ -723,8 +723,7 @@ async function showArchiveViewer(round) {
     const form = round.form === 'monthly' ? '월례' : '주례';
     head.innerHTML = `<h2>회차 내용 미리보기 — ${form} ${escapeHtml(round.baseDate || '')}
       <button class="btn ghost small" id="archive-viewer-close" style="float:right">닫기</button></h2>
-      <div class="muted tight">지난 ${form === '월례' ? '달' : '주'} ${escapeHtml(round.rangeStart)} ~ ${escapeHtml(round.rangeEnd)}
-        · 이번 ${form === '월례' ? '달' : '주'} ${escapeHtml(round.nextRangeStart)} ~ ${escapeHtml(round.nextRangeEnd)}</div>`;
+      <div class="muted tight">지난 ${form === '월례' ? '달' : '주'} ${escapeHtml(round.rangeStart)} ~ ${escapeHtml(round.rangeEnd)}</div>`;
     viewer.appendChild(head);
     viewer.appendChild(renderPreview(round, subs));
     document.getElementById('archive-viewer-close').addEventListener('click', () => {
