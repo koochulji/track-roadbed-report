@@ -1,6 +1,20 @@
-// section0.xml 슬롯 치환 + 본문/라벨 subList 생성
+// 주례 예시.hwpx 기반 새 템플릿용 section-builder.
+//
+// 템플릿 구조 (3개 표):
+//   Table 1: 본부명 헤더 (고정 — 변경 안 함)
+//   Table 2: 구분/내용/비고 헤더 행 + 주요 보고사항 행 → {{MAIN_BODY_SUBLIST}}
+//   Table 3:
+//     지난 주 실적 (range) / {{PAST_BODY_SUBLIST}}
+//     이번 주 계획 (range) / {{NEXT_BODY_SUBLIST}}
+//   "□ 일반 보고사항" 텍스트는 표 사이에 고정으로 들어가 있음.
+//
+// 라벨 셀 (지난주/이번주) 의 날짜 범위는 매번 갱신해야 하므로 {{PAST_LABEL_SUBLIST}} /
+// {{NEXT_LABEL_SUBLIST}} 로 통째로 교체.
+
 import { SECTION_TEMPLATE_XML } from './hwpx-assets.js';
 import { PARA, CHAR, LINESEG_PRESET } from './id-map.js';
+
+// ───────────────── 공통 헬퍼 ─────────────────
 
 function xmlEscape(s) {
   return String(s ?? '')
@@ -11,105 +25,77 @@ function xmlEscape(s) {
     .replace(/'/g, '&apos;');
 }
 
-function lineseg(preset) {
-  const p = LINESEG_PRESET[preset];
+function lineseg(presetName) {
+  const p = LINESEG_PRESET[presetName] ?? LINESEG_PRESET.body;
   return `<hp:linesegarray><hp:lineseg textpos="0" vertpos="0" vertsize="${p.vertsize}" textheight="${p.textheight}" baseline="${p.baseline}" spacing="${p.spacing}" horzpos="${p.horzpos}" horzsize="${p.horzsize}" flags="${p.flags}"/></hp:linesegarray>`;
 }
 
-// 단일 run 문단.
-// preset:'auto' (기본) → linesegarray 생략하여 한글이 직접 줄바꿈/자간 계산.
-//   긴 텍스트가 셀 너비를 넘을 때 자간 압축 또는 다음 줄과 텍스트 겹침 버그 방지.
+// 단일 run 문단. preset:'auto' (기본) → linesegarray 생략 (한글 재계산).
 function P(paraId, charId, text, { preset = 'auto' } = {}) {
-  const t = text === '' || text == null
+  const t = (text === '' || text == null)
     ? '<hp:t/>'
     : `<hp:t>${xmlEscape(text)}</hp:t>`;
   const seg = preset === 'auto' ? '' : lineseg(preset);
-  return `<hp:p id="2147483648" paraPrIDRef="${paraId}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">`
+  return `<hp:p id="0" paraPrIDRef="${paraId}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">`
     + `<hp:run charPrIDRef="${charId}">${t}</hp:run>`
     + seg
     + `</hp:p>`;
 }
 
-// 다중 run 문단. (긴 프로젝트 제목 라인 전용)
-// preset:'auto' (기본) → linesegarray 생략하여 한글이 직접 줄바꿈 계산.
-//   긴 제목이 셀 너비를 넘을 때 다음 줄과 텍스트가 겹치는 버그 방지.
+// 다중 run 문단 (한 줄에 굵게/일반 혼합)
 function Pmulti(paraId, runs, { preset = 'auto' } = {}) {
   const runsXml = runs.map(([cid, text]) => {
-    const t = text === '' || text == null
+    const t = (text === '' || text == null)
       ? '<hp:t/>'
       : `<hp:t>${xmlEscape(text)}</hp:t>`;
     return `<hp:run charPrIDRef="${cid}">${t}</hp:run>`;
   }).join('');
   const seg = preset === 'auto' ? '' : lineseg(preset);
-  return `<hp:p id="2147483648" paraPrIDRef="${paraId}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">`
+  return `<hp:p id="0" paraPrIDRef="${paraId}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">`
     + runsXml
     + seg
     + `</hp:p>`;
 }
 
-// 라벨 셀 첫 문단 (colPr ctrl + 타이틀)
-// linesegarray 는 의도적으로 포함하지 않음 — 짧은 셀 너비에 긴 텍스트가 들어갈 때
-// 캐시된 lineseg 1개가 한글 렌더러에 "한 줄에 다 넣어라" 힌트로 작용해 자간이 압축되는
-// 문제를 피하기 위해, 라벨 셀 문단만 캐시를 비워 한글이 전적으로 재계산하도록 맡긴다.
-function labelHead(text) {
-  return `<hp:p id="2147483648" paraPrIDRef="${PARA.LABEL_TITLE}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">`
-    + `<hp:run charPrIDRef="${CHAR.LABEL_TEXT}">`
-    + `<hp:ctrl><hp:colPr id="" type="NEWSPAPER" layout="LEFT" colCount="1" sameSz="1" sameGap="0"/></hp:ctrl>`
-    + `</hp:run>`
-    + `<hp:run charPrIDRef="${CHAR.LABEL_TEXT}"><hp:t>${xmlEscape(text)}</hp:t></hp:run>`
-    + `</hp:p>`;
-}
-
-// 라벨 셀 두번째 문단 (날짜 범위) — linesegarray 생략 (위와 동일 이유)
-function labelRange(text) {
-  const t = text === '' || text == null
-    ? '<hp:t/>'
-    : `<hp:t>${xmlEscape(text)}</hp:t>`;
-  return `<hp:p id="2147483648" paraPrIDRef="${PARA.LABEL_TITLE}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">`
-    + `<hp:run charPrIDRef="${CHAR.LABEL_TEXT}">${t}</hp:run>`
-    + `</hp:p>`;
-}
-
-// 라벨 셀 subList 내용 생성 (2줄: 제목 + 부제목)
-export function buildLabelSubList(title, range) {
-  return labelHead(title) + labelRange(range);
-}
-
-// 라벨 셀 subList 내용 생성 — 3줄 버전 (제목 + 부제목 + 날짜 범위)
-export function buildLabelSubListThree(title, subtitle, range) {
-  return labelHead(title) + labelRange(subtitle) + labelRange(range);
-}
-
 // 포맷: "오송시험선로 디지털화를 위한 시험선 답사(4/13, ESNT, 박정준)"
 export function formatItem(item) {
-  const meta = [item.date, item.org, item.person].filter(x => x && String(x).trim()).join(', ');
+  const meta = [item.date, item.org, item.person]
+    .filter(x => x && String(x).trim())
+    .join(', ');
   const text = (item.text ?? '').trim();
   if (!meta) return text;
   return `${text}(${meta})`;
 }
 
-// 본문 셀 — kind별 헤더 구성 헬퍼
-// 대분류 그룹의 순서 (샘플 양식 기준). 존재하는 kind만 필터하여 연속 번호 매김.
-const KIND_ORDER = ['basic', 'natl_rnd', 'consign', 'etc'];
+// "2026-04-20" → "04. 20." 형식
+function formatRangeDot(a, b) {
+  const compact = (s) => {
+    const m = String(s ?? '').match(/^\d{4}-(\d{2})-(\d{2})/);
+    return m ? `${m[1]}. ${m[2]}.` : (s ?? '');
+  };
+  if (!a && !b) return '';
+  return `${compact(a)} ∼ ${compact(b)}`;
+}
+
+// ───────────────── 카테고리 / kind ─────────────────
+
+export const KIND_ORDER = ['basic', 'natl_rnd', 'consign', 'etc'];
 export const KIND_NAMES = {
   basic: '기본사업',
   natl_rnd: '국가R&D',
   consign: '수탁사업',
   etc: '기타',
 };
-function kindLabel(kind, idx) {
-  return `(${idx}) ${KIND_NAMES[kind] ?? kind}`;
-}
 
-// 일반보고 양식의 kind 헤더: "<기본사업>" 형식 (꺽쇠 포함)
 function kindHeaderLabel(kind) {
   return `<${KIND_NAMES[kind] ?? kind}>`;
 }
 
-// Compat: 다양한 entries 형식을 새 [{categoryId, past, next}] 형식으로 정규화.
+// ───────────────── entries 정규화 ─────────────────
+
+// 다양한 entries 형식을 [{categoryId, past, next}] 로 정규화
 function flattenSubmissionEntries(sub) {
   const e = sub?.entries;
-  // 새 형식: [{categoryId, past, next}]
   if (Array.isArray(e) && e.every(x => 'past' in x || 'next' in x)) {
     return e.map(x => ({
       categoryId: x.categoryId,
@@ -117,7 +103,6 @@ function flattenSubmissionEntries(sub) {
       next: Array.isArray(x.next) ? x.next : [],
     }));
   }
-  // 통합 형식: [{categoryId, items}] → 모두 past 로
   if (Array.isArray(e)) {
     return e.map(x => ({
       categoryId: x.categoryId,
@@ -125,7 +110,6 @@ function flattenSubmissionEntries(sub) {
       next: [],
     }));
   }
-  // 매우 옛날: {past: [{categoryId, items}], next: [{categoryId, items}]}
   if (e && (Array.isArray(e.past) || Array.isArray(e.next))) {
     const map = new Map();
     for (const ent of (e.past ?? [])) {
@@ -145,12 +129,8 @@ function flattenSubmissionEntries(sub) {
   return [];
 }
 
-// 집계: submissions에서 카테고리별 항목을 모은다.
-// 옵션:
-//   side: 'past' | 'next' | 'all'   (기본 'all') — 가져올 시점
-//   onlyImportant: boolean         (기본 false)
+// 집계: side별 항목 모음 (categoryId → items[])
 export function aggregateItems(submissions, { side = 'all', onlyImportant = false } = {}) {
-  /** @returns {Object<string, Array>}  categoryId → items[] */
   const out = {};
   const collect = (sub, ce, items) => {
     for (const it of (items ?? [])) {
@@ -179,179 +159,187 @@ export function aggregateItems(submissions, { side = 'all', onlyImportant = fals
   return out;
 }
 
-// 일반 보고 본문 (side별): 궤도노반연구실 양식
-//   [궤도노반연구실]
+// 회차 categoriesSnapshot + 마스터 합본 (snapshot 우선, 빠진 것만 master 추가)
+function mergeCategories(round, masterCategories) {
+  const snap = Array.isArray(round.categoriesSnapshot) ? round.categoriesSnapshot : [];
+  const master = Array.isArray(masterCategories) ? masterCategories : [];
+  const map = new Map();
+  for (const c of snap) map.set(c.id, c);
+  for (const c of master) if (!map.has(c.id)) map.set(c.id, c);
+  return [...map.values()];
+}
+
+// ───────────────── 본문 빌더 ─────────────────
+
+// kind > category 그룹핑된 본문 (past 또는 next 단일 시점)
 //   <기본사업>
 //   (1) 과제명 (책임자)
-//    - 항목 1
-//   (2) ...
+//    - 항목
+//    - 항목
+//   (2) 과제명 ...
 //   <국가R&D>
 //   ...
-function buildKindGroupedBody(round, submissions, side, { orgName = '[궤도노반연구실]', includeOrgLine = true, masterCategories = [] } = {}) {
-  // categoriesSnapshot + 마스터 카테고리 합본 (snapshot 우선, 없는 항목만 마스터에서 추가)
-  const snap = Array.isArray(round.categoriesSnapshot) ? round.categoriesSnapshot : [];
-  const merged = new Map();
-  for (const c of snap) merged.set(c.id, c);
-  for (const c of masterCategories) if (!merged.has(c.id)) merged.set(c.id, c);
-  const categories = [...merged.values()];
+function buildKindGroupedContent(round, submissions, side, paraId, masterCategories) {
+  const categories = mergeCategories(round, masterCategories);
   const itemsByCat = aggregateItems(submissions, { side });
   const existingKinds = KIND_ORDER.filter(k => categories.some(c => c.kind === k));
 
   const parts = [];
-  if (includeOrgLine) parts.push(P(PARA.ORG_LINE, CHAR.ORG_AND_KIND, orgName));
-
   let projectCounter = 0;
+
   for (const kind of existingKinds) {
-    const kindsCats = categories
+    const kindCats = categories
       .filter(c => c.kind === kind)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
-    // 항목이 하나라도 있는 kind만 헤더 출력
-    const kindHasAny = kindsCats.some(c => (itemsByCat[c.id] ?? []).length > 0);
+    const kindHasAny = kindCats.some(c => (itemsByCat[c.id] ?? []).length > 0);
     if (!kindHasAny) continue;
 
-    parts.push(P(PARA.ORG_LINE, CHAR.ORG_AND_KIND, kindHeaderLabel(kind)));
+    parts.push(P(paraId, CHAR.ORG_AND_KIND, kindHeaderLabel(kind)));
 
-    for (const cat of kindsCats) {
+    for (const cat of kindCats) {
       const items = itemsByCat[cat.id] ?? [];
-      if (items.length === 0) continue;  // 빈 과제는 건너뛰기
+      if (items.length === 0) continue;
       projectCounter += 1;
       const ownerSuffix = cat.owner ? ` (${cat.owner})` : '';
-      parts.push(Pmulti(PARA.PROJECT_LINE, [
+      parts.push(Pmulti(paraId, [
         [CHAR.ORG_AND_KIND, `(${projectCounter}) `],
         [CHAR.PROJECT_TITLE, `${cat.title}${ownerSuffix}`],
       ]));
       for (const it of items) {
         const charId = it.important ? CHAR.BULLET_BOLD : CHAR.BULLET_TEXT;
-        parts.push(P(PARA.BULLET, charId, formatItem(it), { preset: 'bullet' }));
+        parts.push(P(paraId, charId, ` - ${formatItem(it)}`));
       }
     }
   }
   return parts.join('');
 }
 
-// 일반 보고 본문 셀: 지난 X 실적 + 이번 X 계획 (한 셀에 두 시점 함께)
-// masterCategories: 회차 snapshot 외에 마스터 카테고리 목록 (작성자가 회차 도중 추가한 것 포함)
-export function buildGeneralReportBody(round, submissions, { orgName = '[궤도노반연구실]', masterCategories = [] } = {}) {
-  const periodWord = round.form === 'monthly' ? '달' : '주';
-  const pastRange = formatRangeMD(round.rangeStart, round.rangeEnd);
-  const nextRange = formatRangeMD(round.nextRangeStart, round.nextRangeEnd);
-
-  const parts = [];
-  parts.push(P(PARA.ORG_LINE, CHAR.ORG_AND_KIND, orgName));
-
-  // ▣ 지난 X 실적 ...
-  parts.push(P(
-    PARA.ORG_LINE,
-    CHAR.ORG_AND_KIND,
-    pastRange ? `■ 지난 ${periodWord} 실적 (${pastRange})` : `■ 지난 ${periodWord} 실적`,
-  ));
-  parts.push(buildKindGroupedBody(round, submissions, 'past', { orgName, includeOrgLine: false, masterCategories }));
-
-  // 빈 줄
-  parts.push(P(PARA.BLANK, CHAR.BULLET_TEXT, '', { preset: 'blank' }));
-
-  // ▣ 이번 X 계획 ...
-  parts.push(P(
-    PARA.ORG_LINE,
-    CHAR.ORG_AND_KIND,
-    nextRange ? `■ 이번 ${periodWord} 계획 (${nextRange})` : `■ 이번 ${periodWord} 계획`,
-  ));
-  parts.push(buildKindGroupedBody(round, submissions, 'next', { orgName, includeOrgLine: false, masterCategories }));
-
-  return parts.join('');
-}
-
-// "2026-04-20" → "04.20." 형식
-function formatRangeMD(a, b) {
-  const compact = (s) => {
-    const m = String(s ?? '').match(/^\d{4}-(\d{2})-(\d{2})/);
-    return m ? `${m[1]}.${m[2]}.` : (s ?? '');
-  };
-  if (!a && !b) return '';
-  return `${compact(a)} ~ ${compact(b)}`;
-}
-
-// 본부장/실장 활동사항 자리(placeholder) — 박사님이 한글에서 직접 채우는 영역.
-// 양식 일관성을 위해 빈 줄 구조만 미리 깔아두고, 자동 생성된 과제 내용은 그 아래로 들어감.
+// 주요 보고사항 본문 셀 내용:
+//   <궤도토목본부장 활동사항>
+//   ∘ ...                          (박사님이 한글에서 직접 채움)
+//     - ...
+//   ----------------------
+//   [궤도노반연구실]
+//   <궤도노반연구실장 활동사항>
+//   ∘ ...
+//   ∘ ...
+//   ----------------------
+//   (자동 생성: important=true 항목들 — 과제별)
 const DIVIDER = '----------------------------------------------------------------';
-function buildHeadActivitiesPlaceholder(orgName, parts) {
-  // 1) <궤도토목본부장 활동사항>
-  parts.push(P(PARA.ORG_LINE, CHAR.ORG_AND_KIND, '<궤도토목본부장 활동사항>'));
-  parts.push(P(PARA.BULLET, CHAR.BULLET_TEXT, '∘ ', { preset: 'bullet' }));
-  parts.push(P(PARA.BULLET, CHAR.BULLET_TEXT, '  - ', { preset: 'bullet' }));
-  parts.push(P(PARA.BLANK, CHAR.BULLET_TEXT, '', { preset: 'blank' }));
-  parts.push(P(PARA.ORG_LINE, CHAR.ORG_AND_KIND, DIVIDER));
-
-  // 2) [궤도노반연구실]  /  <궤도노반연구실장 활동사항>
-  parts.push(P(PARA.ORG_LINE, CHAR.ORG_AND_KIND, orgName));
-  parts.push(P(PARA.ORG_LINE, CHAR.ORG_AND_KIND, '<궤도노반연구실장 활동사항>'));
-  parts.push(P(PARA.BULLET, CHAR.BULLET_TEXT, '∘ ', { preset: 'bullet' }));
-  parts.push(P(PARA.BULLET, CHAR.BULLET_TEXT, '∘ ', { preset: 'bullet' }));
-  parts.push(P(PARA.BLANK, CHAR.BULLET_TEXT, '', { preset: 'blank' }));
-  parts.push(P(PARA.ORG_LINE, CHAR.ORG_AND_KIND, DIVIDER));
-  parts.push(P(PARA.BLANK, CHAR.BULLET_TEXT, '', { preset: 'blank' }));
-}
-
-// 주요 보고 본문 셀: 본부장/실장 활동사항 placeholder + important=true 과제별 항목
-export function buildMainReportBody(round, submissions, { orgName = '[궤도노반연구실]', masterCategories = [] } = {}) {
-  // categoriesSnapshot + 마스터 합본
-  const snap = Array.isArray(round.categoriesSnapshot) ? round.categoriesSnapshot : [];
-  const mergedCat = new Map();
-  for (const c of snap) mergedCat.set(c.id, c);
-  for (const c of masterCategories) if (!mergedCat.has(c.id)) mergedCat.set(c.id, c);
-  const categories = [...mergedCat.values()];
-  const itemsByCat = aggregateItems(submissions, { onlyImportant: true });
-
-  // 카테고리는 store의 order 순서대로, 항목 있는 것만
-  const cats = [...categories].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
+export function buildMainBodySubList(round, submissions, { orgName = '[궤도노반연구실]', masterCategories = [] } = {}) {
+  const paraId = PARA.MAIN_BODY;
   const parts = [];
 
-  // 본부장/실장 활동사항 placeholder (박사님이 한글에서 직접 채움)
-  buildHeadActivitiesPlaceholder(orgName, parts);
+  // 본부장 활동사항 placeholder
+  parts.push(P(paraId, CHAR.ORG_AND_KIND, '<궤도토목본부장 활동사항>'));
+  parts.push(P(paraId, CHAR.BULLET_TEXT, '∘ '));
+  parts.push(P(paraId, CHAR.BULLET_TEXT, '  - '));
+  parts.push(P(paraId, CHAR.BULLET_TEXT, ''));
+  parts.push(P(paraId, CHAR.ORG_AND_KIND, DIVIDER));
+  parts.push(P(paraId, CHAR.BULLET_TEXT, ''));
+
+  // [궤도노반연구실] / 실장 활동사항 placeholder
+  parts.push(P(paraId, CHAR.ORG_AND_KIND, orgName));
+  parts.push(P(paraId, CHAR.ORG_AND_KIND, '<궤도노반연구실장 활동사항>'));
+  parts.push(P(paraId, CHAR.BULLET_TEXT, '∘ '));
+  parts.push(P(paraId, CHAR.BULLET_TEXT, '∘ '));
+  parts.push(P(paraId, CHAR.BULLET_TEXT, ''));
+  parts.push(P(paraId, CHAR.ORG_AND_KIND, DIVIDER));
+  parts.push(P(paraId, CHAR.BULLET_TEXT, ''));
+
+  // 자동 생성: important=true 항목 (과제별)
+  const categories = mergeCategories(round, masterCategories);
+  const itemsByCat = aggregateItems(submissions, { onlyImportant: true });
+  const cats = [...categories].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
   let projectCounter = 0;
   for (const cat of cats) {
     const items = itemsByCat[cat.id] ?? [];
-    if (items.length === 0) continue;  // 주요 항목 없는 과제는 출력 생략
+    if (items.length === 0) continue;
     projectCounter += 1;
-    const ownerSuffix = cat.owner ? ` (${cat.owner})` : '';
     const kindPrefix = `[${KIND_NAMES[cat.kind] ?? cat.kind}]`;
-    parts.push(Pmulti(PARA.PROJECT_LINE, [
+    const ownerSuffix = cat.owner ? ` (${cat.owner})` : '';
+    parts.push(Pmulti(paraId, [
       [CHAR.ORG_AND_KIND, `(${projectCounter}) ${kindPrefix} `],
       [CHAR.PROJECT_TITLE, `${cat.title}${ownerSuffix}`],
     ]));
     for (const it of items) {
-      const charId = CHAR.BULLET_BOLD;  // 주요보고는 모든 항목 굵게
-      parts.push(P(PARA.BULLET, charId, formatItem(it), { preset: 'bullet' }));
+      parts.push(P(paraId, CHAR.BULLET_BOLD, ` - ${formatItem(it)}`));
     }
   }
 
-  // 자동 생성된 항목이 없어도 placeholder만으로도 출력은 정상
-  if (projectCounter > 0) {
-    parts.push(P(PARA.BLANK, CHAR.BULLET_TEXT, '', { preset: 'blank' }));
-  }
   return parts.join('');
 }
 
-// 메인: section0.xml 전체 문자열 생성
-// masterCategories: 회차 snapshot 외에 마스터 카테고리 합본용. 회차 도중 추가/편집된 카테고리 반영.
+// 지난 주(달) 실적 본문 셀 내용
+export function buildPastBodySubList(round, submissions, { orgName = '[궤도노반연구실]', masterCategories = [] } = {}) {
+  const paraId = PARA.PERIOD_BODY;
+  const parts = [];
+  parts.push(P(paraId, CHAR.ORG_AND_KIND, orgName));
+  const body = buildKindGroupedContent(round, submissions, 'past', paraId, masterCategories);
+  if (body) parts.push(body);
+  return parts.join('');
+}
+
+// 이번 주(달) 계획 본문 셀 내용
+export function buildNextBodySubList(round, submissions, { orgName = '[궤도노반연구실]', masterCategories = [] } = {}) {
+  const paraId = PARA.PERIOD_BODY;
+  const parts = [];
+  parts.push(P(paraId, CHAR.ORG_AND_KIND, orgName));
+  const body = buildKindGroupedContent(round, submissions, 'next', paraId, masterCategories);
+  if (body) parts.push(body);
+  return parts.join('');
+}
+
+// ───────────────── 라벨 셀 빌더 ─────────────────
+
+// 지난 주 실적 라벨 셀 (3 문단: "지난 주" / "실적" / "(범위)")
+export function buildPastLabelSubList(round) {
+  const periodWord = round.form === 'monthly' ? '달' : '주';
+  const range = formatRangeDot(round.rangeStart, round.rangeEnd);
+  const parts = [];
+  // "지난 주" 또는 "지난 달" — 14pt bold 휴먼명조
+  parts.push(P(PARA.LABEL, CHAR.LABEL_TITLE, `지난 ${periodWord} `));
+  parts.push(P(PARA.LABEL, CHAR.LABEL_PERIOD, '실적'));
+  if (range) parts.push(P(PARA.LABEL, CHAR.LABEL_RANGE_ALT, `(${range})`));
+  return parts.join('');
+}
+
+// 이번 주 계획 라벨 셀
+export function buildNextLabelSubList(round) {
+  const periodWord = round.form === 'monthly' ? '달' : '주';
+  const range = formatRangeDot(round.nextRangeStart, round.nextRangeEnd);
+  const parts = [];
+  parts.push(P(PARA.LABEL, CHAR.LABEL_TITLE, `이번 ${periodWord} `));
+  parts.push(P(PARA.LABEL, CHAR.LABEL_PERIOD, '계획'));
+  if (range) parts.push(P(PARA.LABEL, CHAR.LABEL_RANGE_ALT, `(${range})`));
+  return parts.join('');
+}
+
+// ───────────────── 메인 ─────────────────
+
 export function buildSection0Xml(round, submissions, { masterCategories = [] } = {}) {
   const orgName = round.orgName || '[궤도노반연구실]';
 
-  // Row 0: "주 요 / 보고사항"
-  const mainLabel = buildLabelSubList('주 요', '보고사항');
-  const mainBody = buildMainReportBody(round, submissions, { orgName, masterCategories });
-
-  // Row 1: "일반 보고사항" — 한 셀 안에 지난 X 실적 + 이번 X 계획
-  const periodLabel = round.form === 'monthly' ? '지난 달 실적' : '지난 주 실적';
-  const generalLabelFull = buildLabelSubListThree('일반 보고사항', periodLabel, '+ 이번 계획');
-  const generalBody = buildGeneralReportBody(round, submissions, { orgName, masterCategories });
+  const mainBody = buildMainBodySubList(round, submissions, { orgName, masterCategories });
+  const pastLabel = buildPastLabelSubList(round);
+  const pastBody = buildPastBodySubList(round, submissions, { orgName, masterCategories });
+  const nextLabel = buildNextLabelSubList(round);
+  const nextBody = buildNextBodySubList(round, submissions, { orgName, masterCategories });
 
   return SECTION_TEMPLATE_XML
-    .replace('{{PAST_LABEL_SUBLIST}}', mainLabel)
-    .replace('{{PAST_BODY_SUBLIST}}', mainBody)
-    .replace('{{NEXT_LABEL_SUBLIST}}', generalLabelFull)
-    .replace('{{NEXT_BODY_SUBLIST}}', generalBody);
+    .replace('{{MAIN_BODY_SUBLIST}}', mainBody)
+    .replace('{{PAST_LABEL_SUBLIST}}', pastLabel)
+    .replace('{{PAST_BODY_SUBLIST}}', pastBody)
+    .replace('{{NEXT_LABEL_SUBLIST}}', nextLabel)
+    .replace('{{NEXT_BODY_SUBLIST}}', nextBody);
+}
+
+// 호환: 기존 export 명들 (preview-render 등에서 사용 중)
+export function buildMainReportBody(round, submissions, opts) {
+  return buildMainBodySubList(round, submissions, opts);
+}
+export function buildGeneralReportBody(round, submissions, opts) {
+  // 기존 호출처 호환용 — past+next 합본을 단일 문자열로
+  return buildPastBodySubList(round, submissions, opts) + buildNextBodySubList(round, submissions, opts);
 }
