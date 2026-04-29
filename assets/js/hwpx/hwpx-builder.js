@@ -50,5 +50,5 @@ export async function buildHwpxBlob(round, submissions) {
 export function suggestFileName(round) {
   const form = round.form === 'monthly' ? '월례' : '주례';
   const base = round.baseDate || '';
-  return `간부회의자료_${form}_${base}.hwpx`;
+  return `${form}간부회의 보고자료_궤도노반연구실_${base}.hwpx`;
 }
