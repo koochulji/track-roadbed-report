@@ -351,8 +351,7 @@ function renderRoundTab(s) {
   info.innerHTML = `
     <h2>현재 활성 회차</h2>
     <div><strong>${form}</strong> · 기준일 ${escapeHtml(s.round.baseDate || '')}
-      · 지난 ${form === '월례' ? '달' : '주'} ${escapeHtml(s.round.rangeStart)} ~ ${escapeHtml(s.round.rangeEnd)}
-      · 이번 ${form === '월례' ? '달' : '주'} ${escapeHtml(s.round.nextRangeStart)} ~ ${escapeHtml(s.round.nextRangeEnd)}</div>
+      · 보고 기간 ${escapeHtml(s.round.rangeStart)} ~ ${escapeHtml(s.round.rangeEnd)}</div>
     <div class="muted">조직명: ${escapeHtml(s.round.orgName || '')}</div>
     <div class="row" style="margin-top:10px">
       <button class="btn primary" id="btn-hwpx">HWPX 출력</button>
@@ -462,7 +461,7 @@ function renderNewRoundForm(s) {
         <input type="date" id="nf-base" value="${todayIso}" />
       </div>
       <div class="field"><label>조직명</label>
-        <input type="text" id="nf-org" value="[철도AI융합연구실]" style="width:220px" />
+        <input type="text" id="nf-org" value="[궤도노반연구실]" style="width:220px" />
       </div>
     </div>
     <div class="muted" id="nf-range-preview"></div>
@@ -476,7 +475,7 @@ function renderNewRoundForm(s) {
     try {
       const r = computeRanges(form, base);
       $('#nf-range-preview', box).textContent =
-        `지난 ${form === 'monthly' ? '달' : '주'} ${r.rangeStart} ~ ${r.rangeEnd}  ·  이번 ${form === 'monthly' ? '달' : '주'} ${r.nextRangeStart} ~ ${r.nextRangeEnd}`;
+        `보고 기간 ${r.rangeStart} ~ ${r.rangeEnd}`;
     } catch {
       $('#nf-range-preview', box).textContent = '기준일을 선택해 주세요.';
     }
@@ -488,7 +487,7 @@ function renderNewRoundForm(s) {
   $('#nf-confirm', box).addEventListener('click', async () => {
     const form = $('#nf-form', box).value;
     const base = $('#nf-base', box).value;
-    const org = $('#nf-org', box).value.trim() || '[철도AI융합연구실]';
+    const org = $('#nf-org', box).value.trim() || '[궤도노반연구실]';
     if (!base) { alert('기준일을 선택해 주세요.'); return; }
     if (!s.authors || s.authors.length === 0) {
       alert('작성자 명단이 비어 있습니다. "작성자 명단" 탭에서 먼저 추가하세요.');
@@ -506,7 +505,6 @@ function renderNewRoundForm(s) {
       await createAndConfirmRound({
         form, baseDate: base,
         rangeStart: r.rangeStart, rangeEnd: r.rangeEnd,
-        nextRangeStart: r.nextRangeStart, nextRangeEnd: r.nextRangeEnd,
         orgName: org,
         authors: getState().authors,
         categories: getState().categories.length ? getState().categories : [],
