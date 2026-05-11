@@ -201,10 +201,8 @@ function buildKindGroupedContent(round, submissions, side, paraId, masterCategor
       if (items.length === 0) continue;
       projectCounter += 1;
       const ownerSuffix = cat.owner ? ` (${cat.owner})` : '';
-      parts.push(Pmulti(paraId, [
-        [CHAR.ORG_AND_KIND, `(${projectCounter}) `],
-        [CHAR.PROJECT_TITLE, `${cat.title}${ownerSuffix}`],
-      ]));
+      // 과제 제목 줄 전체 굵게 (번호 + 과제명 + 책임자)
+      parts.push(P(paraId, CHAR.ORG_AND_KIND, `(${projectCounter}) ${cat.title}${ownerSuffix}`));
       for (const it of items) {
         const charId = it.important ? CHAR.BULLET_BOLD : CHAR.BULLET_TEXT;
         parts.push(P(paraId, charId, ` - ${formatItem(it)}`));
@@ -259,10 +257,8 @@ export function buildMainBodySubList(round, submissions, { orgName = '[궤도노
     projectCounter += 1;
     const kindPrefix = `[${KIND_NAMES[cat.kind] ?? cat.kind}]`;
     const ownerSuffix = cat.owner ? ` (${cat.owner})` : '';
-    parts.push(Pmulti(paraId, [
-      [CHAR.ORG_AND_KIND, `(${projectCounter}) ${kindPrefix} `],
-      [CHAR.PROJECT_TITLE, `${cat.title}${ownerSuffix}`],
-    ]));
+    // 과제 제목 줄 전체 굵게 (번호 + 분류 + 과제명 + 책임자)
+    parts.push(P(paraId, CHAR.ORG_AND_KIND, `(${projectCounter}) ${kindPrefix} ${cat.title}${ownerSuffix}`));
     for (const it of items) {
       parts.push(P(paraId, CHAR.BULLET_BOLD, ` - ${formatItem(it)}`));
     }
